@@ -58,8 +58,19 @@ export class EmployeesService {
 
     try {
       const employee = await this.prisma.runInTenantTransaction(async (tx) => {
-        const employeeCount = await tx.employee.count({ where: { companyId } });
-        const employeeCode = `EMP-${String(employeeCount + 1).padStart(4, '0')}`;
+        // NU folosi `count()` — de când există `hardDelete()`, numărul de
+        // angajați poate SCĂDEA (un cont șters definitiv nu se mai numără),
+        // deci count+1 poate coincide cu un cod deja folosit de un angajat
+        // rămas cu un număr mai mare (ex: șterge EMP-0002 din 5, count
+        // devine 4, dar EMP-0005 tot există → coliziune). Codul următor
+        // trebuie să fie mereu mai mare decât cel mai mare cod EXISTENT.
+        const lastEmployee = await tx.employee.findFirst({
+          where: { companyId },
+          orderBy: { employeeCode: 'desc' },
+          select: { employeeCode: true },
+        });
+        const lastNumber = lastEmployee ? parseInt(lastEmployee.employeeCode.slice(4), 10) : 0;
+        const employeeCode = `EMP-${String(lastNumber + 1).padStart(4, '0')}`;
 
         const user = await tx.user.create({
           data: {
