@@ -1,0 +1,11 @@
+{
+  "name": "@worksphere/config",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.nestjs.json",
+    "tsconfig.nextjs.json",
+    "eslint-preset.js"
+  ]
+}

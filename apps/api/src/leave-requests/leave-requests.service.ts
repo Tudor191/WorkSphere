@@ -1,0 +1,192 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { TenantContext } from '../common/tenant/tenant-context';
+import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
+import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
+import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
+
+/** Numără zilele lucrătoare (luni-vineri) dintr-un interval, capete incluse. */
+export function countBusinessDays(start: Date, end: Date): number {
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const dayOfWeek = cursor.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+@Injectable()
+export class LeaveRequestsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll() {
+    return this.prisma.tenantScoped.leaveRequest.findMany({
+      include: {
+        employee: { include: { user: { select: SAFE_USER_SELECT } } },
+        leaveType: true,
+        approvedBy: { select: SAFE_USER_SELECT },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findMine() {
+    const employee = await this.requireCurrentEmployee();
+    return this.prisma.tenantScoped.leaveRequest.findMany({
+      where: { employeeId: employee.id },
+      include: { leaveType: true, approvedBy: { select: SAFE_USER_SELECT } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getBalances(employeeId: string) {
+    return this.prisma.tenantScoped.leaveBalance.findMany({
+      where: { employeeId, year: new Date().getFullYear() },
+      include: { leaveType: true },
+    });
+  }
+
+  async getMyBalances() {
+    const employee = await this.requireCurrentEmployee();
+    return this.getBalances(employee.id);
+  }
+
+  async create(dto: CreateLeaveRequestDto) {
+    const employee = await this.requireCurrentEmployee();
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    if (endDate < startDate) {
+      throw new ConflictException('Data de sfârșit nu poate fi înainte de data de început.');
+    }
+    const daysCount = countBusinessDays(startDate, endDate);
+
+    return this.prisma.tenantScoped.leaveRequest.create({
+      data: {
+        companyId: TenantContext.requireCompanyId(),
+        employeeId: employee.id,
+        leaveTypeId: dto.leaveTypeId,
+        startDate,
+        endDate,
+        daysCount,
+        reason: dto.reason,
+        status: 'PENDING',
+      },
+      include: { leaveType: true },
+    });
+  }
+
+  /**
+   * Aprobare — actualizează statusul ȘI soldul de concediu într-o singură
+   * tranzacție atomică (vezi `PrismaService.runInTenantTransaction`):
+   * dacă oricare pas eșuează, nici cererea nu rămâne "aprobată" cu soldul
+   * neschimbat.
+   */
+  async approve(id: string, approvedById: string) {
+    return this.prisma.runInTenantTransaction(async (tx) => {
+      const request = await tx.leaveRequest.findUnique({
+        where: { id },
+        include: { leaveType: true },
+      });
+      if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
+      if (request.status !== 'PENDING') {
+        throw new ConflictException('Doar cererile în așteptare pot fi aprobate.');
+      }
+
+      const year = request.startDate.getFullYear();
+      const existingBalance = await tx.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveTypeId_year: {
+            employeeId: request.employeeId,
+            leaveTypeId: request.leaveTypeId,
+            year,
+          },
+        },
+      });
+
+      if (request.leaveType.isPaid) {
+        const totalDays = existingBalance?.totalDays ?? request.leaveType.defaultDaysPerYear ?? 0;
+        const usedDays = existingBalance?.usedDays ?? 0;
+        if (Number(usedDays) + Number(request.daysCount) > Number(totalDays)) {
+          throw new ConflictException(
+            'Zile de concediu insuficiente în sold pentru această perioadă.',
+          );
+        }
+      }
+
+      if (existingBalance) {
+        await tx.leaveBalance.update({
+          where: { id: existingBalance.id },
+          data: { usedDays: { increment: request.daysCount } },
+        });
+      } else {
+        await tx.leaveBalance.create({
+          data: {
+            companyId: request.companyId,
+            employeeId: request.employeeId,
+            leaveTypeId: request.leaveTypeId,
+            year,
+            totalDays: request.leaveType.defaultDaysPerYear ?? 0,
+            usedDays: request.daysCount,
+          },
+        });
+      }
+
+      return tx.leaveRequest.update({
+        where: { id },
+        data: { status: 'APPROVED', approvedById, approvedAt: new Date() },
+        include: { leaveType: true },
+      });
+    });
+  }
+
+  async reject(id: string, approvedById: string, dto: RejectLeaveRequestDto) {
+    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
+    if (request.status !== 'PENDING') {
+      throw new ConflictException('Doar cererile în așteptare pot fi respinse.');
+    }
+    return this.prisma.tenantScoped.leaveRequest.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        approvedById,
+        approvedAt: new Date(),
+        rejectionReason: dto.rejectionReason,
+      },
+    });
+  }
+
+  async cancel(id: string) {
+    const employee = await this.requireCurrentEmployee();
+    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
+    if (request.employeeId !== employee.id) {
+      throw new ForbiddenException('Poți anula doar propriile cereri.');
+    }
+    if (request.status !== 'PENDING') {
+      throw new ConflictException('Doar cererile în așteptare pot fi anulate.');
+    }
+    return this.prisma.tenantScoped.leaveRequest.update({
+      where: { id },
+      data: { status: 'CANCELED' },
+    });
+  }
+
+  private async requireCurrentEmployee() {
+    const { userId } = TenantContext.get()!;
+    const employee = await this.prisma.tenantScoped.employee.findUnique({
+      where: { userId: userId! },
+    });
+    if (!employee) {
+      throw new NotFoundException('Utilizatorul curent nu are o fișă de angajat asociată.');
+    }
+    return employee;
+  }
+}

@@ -1,0 +1,1035 @@
+// WorkSphere — schema Prisma
+//
+// Convenție multi-tenancy: orice model marcat cu "[TENANT]" în comentariu
+// are o coloană `companyId` obligatorie și este acoperit de o politică
+// Row Level Security (vezi migrația `enable_rls`). Modelele fără această
+// marcă sunt globale (nivel platformă) — nu aparțin niciunei companii.
+//
+// Explicația fiecărui model + relații: docs/DATABASE.md
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  output          = "./generated/client"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, vector]
+}
+
+// =========================================================================
+// PLATFORMĂ (global — nu aparțin unei companii)
+// =========================================================================
+
+/// Administrator de platformă (Super Admin) — gestionează firmele înscrise,
+/// planurile de abonament și are acces de suport (impersonation, cu audit).
+/// Complet separat de `User` (auth-ul angajaților unei companii) pentru a nu
+/// amesteca niciodată un cont de platformă cu un cont de tenant.
+model PlatformAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("platform_admins")
+}
+
+/// O firmă înregistrată în platformă = un tenant. Rădăcina izolării de date:
+/// orice model tenant-scoped are `companyId` care indică spre acest tabel.
+model Company {
+  id      String @id @default(cuid())
+  /// subdomeniu unic (ex: acme.worksphere.ro) — folosit pentru rezolvarea tenantului
+  slug    String @unique
+  name    String
+
+  // date fiscale (cerute de "Setări companie")
+  cui       String?
+  vatPayer  Boolean @default(false)
+  address   String?
+  email     String?
+  phone     String?
+  logoUrl   String?
+
+  // preferințe
+  language        String   @default("ro")
+  currency         String   @default("RON")
+  timezone         String   @default("Europe/Bucharest")
+  theme            String   @default("system") // light | dark | system
+  workingHoursStart String  @default("09:00")
+  workingHoursEnd   String  @default("18:00")
+
+  isActive    Boolean  @default(true)
+  trialEndsAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users            User[]
+  roles            Role[]
+  departments      Department[]
+  employees        Employee[]
+  leaveTypes       LeaveType[]
+  leaveRequests    LeaveRequest[]
+  attendanceRecords AttendanceRecord[]
+  documents        Document[]
+  clients          Client[]
+  leads            Lead[]
+  pipelineStages   PipelineStage[]
+  products         Product[]
+  stockMovements   StockMovement[]
+  projects         Project[]
+  tasks            Task[]
+  timeEntries      TimeEntry[]
+  chatChannels     ChatChannel[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  calendarEvents   CalendarEvent[]
+  invoices         Invoice[]
+  subscription     Subscription?
+  apiKeys          ApiKey[]
+
+  @@map("companies")
+}
+
+/// Catalog global de planuri de abonament (definit de platformă, nu de companii).
+model SubscriptionPlan {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  priceMonthlyCents     Int
+  priceYearlyCents      Int
+  currency              String   @default("RON")
+  stripePriceIdMonthly  String?
+  stripePriceIdYearly   String?
+  maxEmployees          Int
+  /// listă de feature-uri incluse (folosit pentru afișare + gating în aplicație)
+  features              Json
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+/// [TENANT] Abonamentul curent al unei companii — o relație 1:1 cu Company.
+model Subscription {
+  id                   String             @id @default(cuid())
+  companyId            String             @unique
+  company              Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status               SubscriptionStatus @default(TRIALING)
+  billingCycle         BillingCycle       @default(MONTHLY)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+/// [TENANT] Facturi de abonament emise către companie (sincronizate din Stripe).
+model Invoice {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String?  @unique
+  amountCents     Int
+  currency        String   @default("RON")
+  status          String
+  pdfUrl          String?
+  issuedAt        DateTime
+
+  @@index([companyId])
+  @@map("subscription_invoices")
+}
+
+// =========================================================================
+// AUTENTIFICARE & RBAC
+// =========================================================================
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+/// [TENANT] Identitatea de autentificare a unui membru al companiei.
+/// Separată de `Employee` (fișa HR): un User e "cine se loghează", un
+/// Employee e "profilul de angajat" — permite în viitor conturi fără profil
+/// HR complet (ex. cont extern de contabilitate).
+model User {
+  id               String     @id @default(cuid())
+  companyId        String
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// unic global (nu per-companie) — simplifică login-ul la "email + parolă",
+  /// fără pas de selectare a companiei. Trade-off asumat: o persoană care
+  /// lucrează pentru mai multe firme client are nevoie de emailuri diferite
+  /// per cont în v1; suport pentru multi-companie pe un singur cont e o
+  /// extensie viitoare (tabel `CompanyMembership`), nu blochează arhitectura
+  /// curentă.
+  email            String     @unique
+  /// null dacă utilizatorul s-a înregistrat exclusiv prin Google OAuth
+  passwordHash     String?
+  googleId         String?    @unique
+  firstName        String
+  lastName         String
+  avatarUrl        String?
+  phone            String?
+  roleId           String
+  role             Role       @relation(fields: [roleId], references: [id])
+  status           UserStatus @default(INVITED)
+  twoFactorEnabled Boolean    @default(false)
+  twoFactorSecret  String?
+  lastLoginAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  employee          Employee?
+  refreshTokens      RefreshToken[]
+  leaveRequestsApproved LeaveRequest[]      @relation("LeaveApprover")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  deviceTokens        DeviceToken[]
+  ownedClients        Client[]             @relation("ClientOwner")
+  ownedLeads          Lead[]               @relation("LeadOwner")
+  createdDocuments    Document[]           @relation("DocumentUploader")
+  projectMemberships  ProjectMember[]
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  createdTasks        Task[]               @relation("TaskCreator")
+  taskComments        TaskComment[]
+  timeEntries         TimeEntry[]
+  chatChannelMembers  ChatChannelMember[]
+  chatMessages        ChatMessage[]
+  chatReactions       ChatReaction[]
+  createdCalendarEvents CalendarEvent[]    @relation("CalendarEventCreator")
+  calendarAttendees    CalendarEventAttendee[]
+  crmNotes             CrmNote[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+/// Refresh token opac (nu JWT) — permite revocare individuală instant.
+/// Rotație la fiecare refresh: token-ul vechi e marcat `revokedAt` și
+/// `replacedByTokenId` indică noul token, pentru detectarea reutilizării
+/// (semn de furt de token → se revocă toate sesiunile utilizatorului).
+model RefreshToken {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash         String    @unique
+  userAgent         String?
+  ipAddress         String?
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  createdAt         DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// [TENANT] Rol per companie. Rolurile de sistem (isSystem=true) sunt seed-uite
+/// automat la crearea companiei (Admin, Manager, HR, Contabil, Angajat) și nu
+/// pot fi șterse; companiile pot crea roluri custom cu permisiuni proprii.
+model Role {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  /// identificator stabil pentru rolurile de sistem, folosit în seed/migrări
+  /// (ex: "ADMIN") — null pentru rolurile custom create de utilizatori
+  systemKey String?
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("roles")
+}
+
+/// Catalog global de permisiuni granulare, format "resource:action"
+/// (ex: "employees:delete", "leave_requests:approve"). Global pentru că
+/// setul de acțiuni posibile e definit de cod (fiecare endpoint protejat
+/// declară ce permisiune necesită), nu de fiecare companie.
+model Permission {
+  id          String @id @default(cuid())
+  resource    String
+  action      String
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+/// Tabel de legătură many-to-many Role ↔ Permission.
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// [TENANT] Cheie API pentru integrări externe (Zapier, n8n, contabilitate) —
+/// distinctă de JWT-ul intern folosit de frontend.
+model ApiKey {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String    @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([companyId])
+  @@map("api_keys")
+}
+
+// =========================================================================
+// ANGAJAȚI & DEPARTAMENTE
+// =========================================================================
+
+/// [TENANT] Departament, cu ierarhie opțională (parentDepartment).
+model Department {
+  id                 String       @id @default(cuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  managerId          String?
+  parentDepartmentId String?
+  parentDepartment   Department?  @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  subDepartments     Department[] @relation("DepartmentHierarchy")
+  createdAt          DateTime     @default(now())
+
+  employees Employee[]
+
+  @@index([companyId])
+  @@map("departments")
+}
+
+enum ContractType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  INTERN
+}
+
+/// [TENANT] Fișa HR a unui angajat — extensie 1:1 a lui User cu date
+/// specifice HR (contract, departament, concedii, superior ierarhic).
+model Employee {
+  id               String       @id @default(cuid())
+  companyId        String
+  company          Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId           String       @unique
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode     String
+  departmentId     String?
+  department       Department?  @relation(fields: [departmentId], references: [id])
+  position         String
+  managerId        String?
+  manager          Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports    Employee[]   @relation("EmployeeManager")
+  contractType     ContractType @default(FULL_TIME)
+  hireDate         DateTime
+  endDate          DateTime?
+  birthDate        DateTime?
+  address          String?
+  emergencyContact String?
+  annualLeaveDays  Int          @default(21)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  leaveRequests     LeaveRequest[]
+  leaveBalances     LeaveBalance[]
+  attendanceRecords AttendanceRecord[]
+  documents         Document[]
+
+  @@unique([companyId, employeeCode])
+  @@index([companyId])
+  @@map("employees")
+}
+
+// =========================================================================
+// CONCEDII
+// =========================================================================
+
+/// [TENANT] Tip de concediu configurabil (Odihnă, Medical, Fără plată, ...).
+model LeaveType {
+  id                   String  @id @default(cuid())
+  companyId            String
+  company              Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name                 String
+  colorHex             String  @default("#6366f1")
+  isPaid               Boolean @default(true)
+  defaultDaysPerYear   Int?
+
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+
+  @@unique([companyId, name])
+  @@map("leave_types")
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+/// [TENANT] Cerere de concediu — nucleul modulului "Concedii" (cerere,
+/// aprobare/respingere, istoric).
+model LeaveRequest {
+  id               String              @id @default(cuid())
+  companyId        String
+  company          Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId      String
+  leaveType        LeaveType           @relation(fields: [leaveTypeId], references: [id])
+  startDate        DateTime
+  endDate          DateTime
+  daysCount        Decimal             @db.Decimal(5, 1)
+  reason           String?
+  status           LeaveRequestStatus  @default(PENDING)
+  approvedById     String?
+  approvedBy       User?               @relation("LeaveApprover", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@map("leave_requests")
+}
+
+/// [TENANT] Sold anual de concediu per angajat + tip de concediu — sursa de
+/// adevăr pentru "câte zile mai are Andrei" (calculat, nu recalculat ad-hoc
+/// din toate cererile, pentru performanță).
+model LeaveBalance {
+  id           String    @id @default(cuid())
+  companyId    String
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId  String
+  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year         Int
+  totalDays    Decimal   @db.Decimal(5, 1)
+  usedDays     Decimal   @default(0) @db.Decimal(5, 1)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([companyId])
+  @@map("leave_balances")
+}
+
+// =========================================================================
+// PONTAJ
+// =========================================================================
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+}
+
+/// [TENANT] Înregistrare de pontaj (check-in/check-out), cu geolocație
+/// opțională și calcul de ore lucrate/suplimentare.
+model AttendanceRecord {
+  id              String            @id @default(cuid())
+  companyId       String
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  checkInAt       DateTime
+  checkOutAt      DateTime?
+  checkInLat      Float?
+  checkInLng      Float?
+  checkOutLat     Float?
+  checkOutLng     Float?
+  workedMinutes   Int?
+  overtimeMinutes Int               @default(0)
+  status          AttendanceStatus  @default(PRESENT)
+  notes           String?
+  createdAt       DateTime          @default(now())
+
+  @@index([companyId])
+  @@index([employeeId, checkInAt])
+  @@map("attendance_records")
+}
+
+// =========================================================================
+// CALENDAR
+// =========================================================================
+
+enum CalendarEventType {
+  MEETING
+  EVENT
+  HOLIDAY
+  DEADLINE
+}
+
+/// [TENANT] Eveniment de calendar (întâlnire, eveniment companie, sărbătoare,
+/// deadline). Participanții sunt legați prin `CalendarEventAttendee`.
+model CalendarEvent {
+  id            String            @id @default(cuid())
+  companyId     String
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  startAt       DateTime
+  endAt         DateTime
+  allDay        Boolean           @default(false)
+  type          CalendarEventType @default(EVENT)
+  createdById   String
+  createdBy     User              @relation("CalendarEventCreator", fields: [createdById], references: [id])
+  createdAt     DateTime          @default(now())
+
+  attendees CalendarEventAttendee[]
+
+  @@index([companyId, startAt])
+  @@map("calendar_events")
+}
+
+model CalendarEventAttendee {
+  eventId String
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@map("calendar_event_attendees")
+}
+
+// =========================================================================
+// DOCUMENTE (+ pregătire pentru RAG)
+// =========================================================================
+
+enum DocumentCategory {
+  CONTRACT
+  ADEVERINTA
+  FILE
+  OTHER
+}
+
+/// [TENANT] Fișier stocat în S3/R2 (contract, adeverință, fișier general).
+/// `employeeId` opțional leagă documentul de un angajat (ex: contract de muncă).
+model Document {
+  id           String           @id @default(cuid())
+  companyId    String
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  category     DocumentCategory @default(OTHER)
+  fileKey      String
+  fileUrl      String
+  mimeType     String
+  sizeBytes    Int
+  employeeId   String?
+  employee     Employee?        @relation(fields: [employeeId], references: [id])
+  uploadedById String
+  uploadedBy   User             @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime         @default(now())
+
+  chunks         DocumentChunk[]
+  taskAttachments TaskAttachment[]
+  chatAttachments ChatMessageAttachment[]
+
+  @@index([companyId])
+  @@map("documents")
+}
+
+/// [TENANT] Fragment de text extras dintr-un document, pentru indexare RAG.
+/// Un document e împărțit în chunk-uri (~500-1000 tokeni) la upload, fiecare
+/// chunk primește un embedding — vezi `DocumentEmbedding`.
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  chunkIndex Int
+  tokenCount Int
+  createdAt  DateTime @default(now())
+
+  embedding DocumentEmbedding?
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+/// Vector embedding per chunk (pgvector). Folosit de AI Assistant pentru
+/// retrieval semantic (RAG) — răspunsurile sunt fundamentate pe conținutul
+/// real al documentelor companiei, nu doar pe cunoștințe generale.
+/// Tip `vector(1536)` (dimensiune OpenAI text-embedding-3-small) — Prisma nu
+/// are suport nativ pentru tipul `vector`, de aceea e marcat `Unsupported`;
+/// interogările de similaritate (cosine distance) se fac prin `$queryRaw`.
+model DocumentEmbedding {
+  id              String                  @id @default(cuid())
+  documentChunkId String                  @unique
+  documentChunk   DocumentChunk           @relation(fields: [documentChunkId], references: [id], onDelete: Cascade)
+  embedding       Unsupported("vector(1536)")
+
+  @@map("document_embeddings")
+}
+
+// =========================================================================
+// CRM
+// =========================================================================
+
+/// [TENANT] Client existent (companie cu care se lucrează deja).
+model Client {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  cui       String?
+  email     String?
+  phone     String?
+  address   String?
+  ownerId   String?
+  owner     User?    @relation("ClientOwner", fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+
+  tasks     Task[]
+  notes     CrmNote[]
+  projects  Project[]
+
+  @@index([companyId])
+  @@map("clients")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+/// [TENANT] Lead — potențial client aflat undeva în pipeline de vânzări.
+model Lead {
+  id              String         @id @default(cuid())
+  companyId       String
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name            String
+  companyName     String?
+  email           String?
+  phone           String?
+  source          String?
+  status          LeadStatus     @default(NEW)
+  valueCents      Int?
+  ownerId         String?
+  owner           User?          @relation("LeadOwner", fields: [ownerId], references: [id])
+  pipelineStageId String?
+  pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tasks Task[]
+  notes CrmNote[]
+
+  @@index([companyId])
+  @@map("leads")
+}
+
+/// [TENANT] Etapă de pipeline configurabilă (ex: Nou → Contactat → Ofertă → Câștigat).
+model PipelineStage {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int
+  probability Int   @default(0)
+
+  leads Lead[]
+
+  @@unique([companyId, order])
+  @@map("pipeline_stages")
+}
+
+/// [TENANT] Notiță CRM legată fie de un Client, fie de un Lead (follow-up).
+model CrmNote {
+  id        String   @id @default(cuid())
+  companyId String
+  clientId  String?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@map("crm_notes")
+}
+
+// =========================================================================
+// INVENTAR
+// =========================================================================
+
+/// [TENANT] Produs / articol de inventar, cu cod de bare și cod QR (pentru
+/// scanare din aplicația mobilă/PWA).
+model Product {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  sku            String
+  barcode        String?
+  qrCode         String?
+  category       String?
+  unitPriceCents Int
+  currency       String   @default("RON")
+  unit           String   @default("buc")
+  stockQuantity  Decimal  @default(0) @db.Decimal(10, 2)
+  minStockAlert  Decimal? @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  stockMovements StockMovement[]
+
+  @@unique([companyId, sku])
+  @@index([companyId])
+  @@map("products")
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+/// [TENANT] Mișcare de stoc (intrare/ieșire) — istoric complet, stocul curent
+/// pe `Product.stockQuantity` e derivat din suma acestor mișcări.
+model StockMovement {
+  id              String            @id @default(cuid())
+  companyId       String
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(10, 2)
+  reason          String?
+  performedById   String
+  createdAt       DateTime          @default(now())
+
+  @@index([companyId])
+  @@index([productId])
+  @@map("stock_movements")
+}
+
+// =========================================================================
+// PROIECTE & TASKURI (+ Time Tracking)
+// =========================================================================
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELED
+}
+
+/// [TENANT] Proiect — poate fi legat opțional de un Client CRM.
+model Project {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?
+  deadline    DateTime?
+  clientId    String?
+  client      Client?       @relation(fields: [clientId], references: [id])
+  createdAt   DateTime      @default(now())
+
+  members ProjectMember[]
+  tasks   Task[]
+
+  @@index([companyId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleInProject String @default("member")
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// [TENANT] Task generic — folosit atât pentru task-uri de proiect
+/// (`projectId` completat) cât și pentru follow-up-uri CRM (`leadId`/
+/// `clientId` completat) sau task-uri de sine stătătoare din Calendar. Un
+/// singur model evită duplicarea logicii de "task" în 3 module diferite.
+model Task {
+  id          String       @id @default(cuid())
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clientId    String?
+  client      Client?      @relation(fields: [clientId], references: [id])
+  leadId      String?
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  assigneeId  String?
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdById String
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  comments    TaskComment[]
+  attachments TaskAttachment[]
+  timeEntries TimeEntry[]
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([assigneeId])
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, documentId])
+  @@map("task_attachments")
+}
+
+/// [TENANT] Interval de time-tracking pe un task.
+model TimeEntry {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  taskId          String
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationMinutes Int?
+  description     String?
+
+  @@index([companyId])
+  @@index([taskId])
+  @@map("time_entries")
+}
+
+// =========================================================================
+// CHAT INTERN
+// =========================================================================
+
+/// [TENANT] Canal de chat (public sau privat).
+model ChatChannel {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  isPrivate   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  members  ChatChannelMember[]
+  messages ChatMessage[]
+
+  @@unique([companyId, name])
+  @@map("chat_channels")
+}
+
+model ChatChannelMember {
+  channelId String
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime    @default(now())
+
+  @@id([channelId, userId])
+  @@map("chat_channel_members")
+}
+
+/// [TENANT] Mesaj de chat — suportă editare (editedAt) și e indexat pentru
+/// search full-text (vezi migrația `chat_message_search_index`).
+model ChatMessage {
+  id        String   @id @default(cuid())
+  channelId String
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String
+  editedAt  DateTime?
+  createdAt DateTime @default(now())
+
+  attachments ChatMessageAttachment[]
+  reactions   ChatReaction[]
+
+  @@index([channelId, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatMessageAttachment {
+  messageId  String
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, documentId])
+  @@map("chat_message_attachments")
+}
+
+model ChatReaction {
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+
+  @@id([messageId, userId, emoji])
+  @@map("chat_reactions")
+}
+
+// =========================================================================
+// NOTIFICĂRI
+// =========================================================================
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  SMS
+  IN_APP
+}
+
+/// [TENANT] Notificare trimisă unui utilizator, pe unul din cele 4 canale
+/// cerute (Email/Push/SMS/În aplicație). `metadata` ține payload-ul necesar
+/// pentru deep-link (ex: ID-ul task-ului care a generat notificarea).
+model Notification {
+  id        String              @id @default(cuid())
+  companyId String
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   NotificationChannel
+  type      String
+  title     String
+  body      String
+  metadata  Json?
+  isRead    Boolean             @default(false)
+  createdAt DateTime            @default(now())
+
+  @@index([companyId, userId])
+  @@map("notifications")
+}
+
+/// Token de dispozitiv pentru Firebase Cloud Messaging (push notifications).
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fcmToken  String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+// =========================================================================
+// AUDIT LOG
+// =========================================================================
+
+/// [TENANT] Înregistrare de audit pentru orice mutație relevantă din
+/// aplicație (cine, ce, când, de unde). `userId` e nullable pentru acțiuni
+/// declanșate de un `PlatformAdmin` (impersonation) sau de sistem (cron job).
+model AuditLog {
+  id              String         @id @default(cuid())
+  companyId       String
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?          @relation(fields: [userId], references: [id])
+  platformAdminId String?
+  platformAdmin   PlatformAdmin? @relation(fields: [platformAdminId], references: [id])
+  action          String
+  entityType      String
+  entityId        String
+  oldValues       Json?
+  newValues       Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime       @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

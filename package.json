@@ -1,0 +1,28 @@
+{
+  "name": "worksphere",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Platformă SaaS multi-tenant pentru administrarea activității firmelor din România",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "db:generate": "pnpm --filter @worksphere/database generate",
+    "db:migrate": "pnpm --filter @worksphere/database migrate",
+    "db:seed": "pnpm --filter @worksphere/database seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "prettier": "^3.4.2",
+    "prettier-plugin-tailwindcss": "^0.6.9",
+    "typescript": "^5.7.2"
+  }
+}

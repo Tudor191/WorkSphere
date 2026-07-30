@@ -1,0 +1,99 @@
+# Roadmap — WorkSphere
+
+## Etape (conform cerințe) și status curent
+
+| Etapă | Conținut | Status |
+|---|---|---|
+| 1. Analiză produs | Acest document + `ARCHITECTURE.md` | ✅ Făcut |
+| 2. Wireframe | Structură pagini/dashboard descrisă în `ARCHITECTURE.md` §5 și componentele din `apps/web` | ✅ Implicit prin implementare directă în cod |
+| 3. UI Design | Design system Tailwind + shadcn/ui, dark/light mode | ✅ Fundație gata |
+| 4. Database | Schema Prisma completă, toate modulele | ✅ Făcut (`packages/database/prisma/schema.prisma`) |
+| 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟡 Parțial — vezi mai jos |
+| 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟡 Parțial — vezi mai jos |
+| 7. AI | OpenAI + RAG | ⬜ Neînceput — vezi „Ce urmează" |
+| 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 Teste unitare + e2e reale (auth, RBAC, izolare multi-tenant) pe modulele implementate; coverage 80% pe tot produsul e prematur la acest stadiu |
+| 9. Deployment | Docker + CI/CD + Nginx | 🟡 Dockerfile-uri multi-stage (api/web) + docker-compose (Postgres/pgvector, Redis, Nginx) + GitHub Actions (lint/typecheck/build/test/e2e). Build-urile Docker nu au putut fi testate live în acest mediu (egress blocat spre registry-ul Docker Hub) — verificate prin review manual atent, nu prin `docker build` real |
+| 10. Lansare Beta | — | ⬜ Neînceput |
+| 11. Feedback | — | ⬜ Neînceput |
+| 12. Versiunea 1.0 | — | ⬜ Neînceput |
+
+## Ce este funcțional acum (implementat cu adevărat, nu schelet gol)
+
+**Backend (`apps/api`)**
+- Multi-tenancy: `TenantContextMiddleware` + `PrismaService` cu filtrare
+  automată pe `companyId`, RLS activat în migrația SQL.
+- Auth: register companie nouă, login, refresh token cu rotație, logout,
+  Google OAuth (strategie Passport configurată).
+- RBAC: ghid + decorator `@RequirePermission()`, seed cu rolurile standard.
+- Audit log: interceptor global care înregistrează automat mutațiile.
+- Module CRUD complete: `companies`, `employees`, `departments`, `roles`
+  (listare, pentru atribuire), `leave-requests` (cu calcul zile disponibile),
+  `attendance` (check-in/check-out + calcul ore suplimentare).
+- Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
+  Helmet, CORS configurabil.
+- Verificat manual end-to-end (browser real, prin Playwright): înregistrare
+  → dashboard → creare departament/angajat → cerere concediu → aprobare →
+  pontaj. Testele au depistat și au corectat două bug-uri reale de izolare
+  multi-tenant (vezi commit history) înainte de a ajunge în acest stadiu.
+
+**Frontend (`apps/web`)**
+- Landing page completă: Hero, Beneficii, Funcționalități, Testimoniale,
+  Prețuri, FAQ, Contact, Footer — animații Framer Motion, responsive.
+- Autentificare: login, register, onboarding companie.
+- Dashboard: sidebar + header + dark/light mode, pagini conectate real la
+  API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
+  statistici reale din DB.
+
+## Ce urmează (nu a fost implementat fals — necesită decizii de business)
+
+1. **AI Assistant + RAG** — necesită cheie OpenAI API activă și decizie
+   despre costuri (per-companie rate limiting pe tokeni). Schema DB are
+   deja tabelele `Document`, `DocumentChunk`, `Embedding` pregătite
+   (pgvector). Implementare recomandată: `pgvector` în Postgres (evită un
+   vector DB separat — Pinecone/Weaviate — inutil la scara inițială),
+   chunking + embeddings la upload document, retrieval + prompt injection
+   controlat în system prompt cu date reale ale companiei curente.
+2. **Stripe billing complet** — checkout, webhook-uri, upgrade/downgrade,
+   facturi. Necesită cont Stripe live/test și decizie asupra prețurilor
+   planurilor. Schema (`SubscriptionPlan`, `Subscription`, `Invoice`) e
+   gata.
+3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
+   (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
+4. **Firebase Cloud Messaging** — necesită proiect Firebase.
+5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
+   toate; API + UI urmează după ce fundația (auth/RBAC/multi-tenancy) e
+   validată în producție, ca să nu se repete pattern-uri greșite în 10+
+   module.
+6. **Suită de teste completă (80% coverage)** — construită incremental pe
+   măsură ce fiecare modul e implementat, nu retroactiv.
+7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
+
+## Funcționalități propuse suplimentare (cresc valoarea comercială pe piața RO)
+
+Nu sunt în cerința inițială, dar recomand includerea lor — motiv pe scurt:
+
+1. **e-Factura / SPV (ANAF)** — obligatorie legal pentru B2B în România.
+   Fără asta, modulul de facturare nu poate fi folosit real de nicio firmă
+   românească. Prioritate maximă înainte de lansare comercială RO.
+2. **Onboarding wizard pentru companie nouă** — reduce time-to-value,
+   standard în orice SaaS modern (Notion, Linear).
+3. **Internaționalizare (RO/EN)** — piața țintă e România, dar mulți
+   angajatori au și angajați/parteneri non-vorbitori de română.
+4. **Impersonation mode pentru suport** (Super Admin se autentifică "ca"
+   o companie, cu audit log strict) — esențial operațional, fără el orice
+   ticket de suport necesită acces direct la DB.
+5. **Export/ștergere date (GDPR — drept la portabilitate și la ștergere)**
+   — obligație legală UE, nu opțional pentru un SaaS B2B european.
+6. **API keys per companie pentru integrări externe** (diferit de JWT-ul
+   intern) — companiile vor conecta WorkSphere la alte unelte (Zapier,
+   n8n, contabilitate).
+7. **Integrare software contabilitate RO** (SAGA/ONE/ContaBil export) —
+   diferențiator real față de Monday/ClickUp care nu au așa ceva pentru RO.
+8. **PWA + geolocație pentru check-in/check-out mobil** — cerința
+   menționează "geolocație opțională" la pontaj; o aplicație mobilă/PWA e
+   necesară practic pentru asta (angajații nu pontează de pe desktop).
+9. **Status page public + monitorizare uptime** — încredere pentru clienți
+   B2B înainte de a semna un abonament anual.
+
+Acestea sunt propuneri — nu au fost implementate încă, pentru a nu lua
+decizii de business (preț, furnizor SMS, etc.) fără confirmare.

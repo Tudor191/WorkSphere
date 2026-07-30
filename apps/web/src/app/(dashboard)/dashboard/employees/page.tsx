@@ -1,0 +1,230 @@
+'use client';
+
+import * as React from 'react';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCreateEmployee, useEmployees } from '@/hooks/use-employees';
+import { useRoles } from '@/hooks/use-roles';
+import { useDepartments } from '@/hooks/use-departments';
+import { ApiError } from '@/lib/api-client';
+
+const statusVariant: Record<string, 'success' | 'warning' | 'secondary'> = {
+  ACTIVE: 'success',
+  INVITED: 'warning',
+  SUSPENDED: 'secondary',
+};
+
+export default function EmployeesPage() {
+  const { data: employees, isLoading } = useEmployees();
+  const { data: roles } = useRoles();
+  const { data: departments } = useDepartments();
+  const createEmployee = useCreateEmployee();
+
+  const [open, setOpen] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [successPassword, setSuccessPassword] = React.useState<string | null>(null);
+  const [form, setForm] = React.useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    position: '',
+    roleId: '',
+    departmentId: '',
+    hireDate: new Date().toISOString().slice(0, 10),
+  });
+
+  const resetForm = () =>
+    setForm({ email: '', firstName: '', lastName: '', position: '', roleId: '', departmentId: '', hireDate: new Date().toISOString().slice(0, 10) });
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const result = await createEmployee.mutateAsync({
+        email: form.email,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        position: form.position,
+        roleId: form.roleId,
+        departmentId: form.departmentId || undefined,
+        contractType: 'FULL_TIME',
+        hireDate: form.hireDate,
+      });
+      setSuccessPassword(result.temporaryPassword);
+      resetForm();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Eroare la crearea angajatului.');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Angajați</h1>
+          <p className="text-sm text-muted-foreground">Gestionează echipa companiei tale.</p>
+        </div>
+
+        <Dialog
+          open={open}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) {
+              setError(null);
+              setSuccessPassword(null);
+            }
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4" />
+              Adaugă angajat
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Angajat nou</DialogTitle>
+            </DialogHeader>
+
+            {successPassword ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Cont creat cu succes. Parola temporară de mai jos trebuie comunicată angajatului
+                  (în producție se trimite automat prin email):
+                </p>
+                <code className="block rounded-lg bg-muted px-4 py-3 text-sm">{successPassword}</code>
+                <DialogFooter>
+                  <Button onClick={() => setOpen(false)}>Închide</Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <form onSubmit={onSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Prenume</Label>
+                    <Input value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nume</Label>
+                    <Input value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} required />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Funcție</Label>
+                  <Input value={form.position} onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))} required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Rol</Label>
+                    <Select value={form.roleId} onValueChange={(v) => setForm((f) => ({ ...f, roleId: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Alege rolul" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roles?.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Departament</Label>
+                    <Select value={form.departmentId} onValueChange={(v) => setForm((f) => ({ ...f, departmentId: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Opțional" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments?.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Data angajării</Label>
+                  <Input type="date" value={form.hireDate} onChange={(e) => setForm((f) => ({ ...f, hireDate: e.target.value }))} required />
+                </div>
+
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <DialogFooter>
+                  <Button type="submit" disabled={createEmployee.isPending || !form.roleId}>
+                    {createEmployee.isPending ? 'Se salvează...' : 'Salvează'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border bg-muted/40 text-left text-muted-foreground">
+              <tr>
+                <th className="px-6 py-3 font-medium">Nume</th>
+                <th className="px-6 py-3 font-medium">Cod</th>
+                <th className="px-6 py-3 font-medium">Funcție</th>
+                <th className="px-6 py-3 font-medium">Departament</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Se încarcă...
+                  </td>
+                </tr>
+              )}
+              {!isLoading && employees?.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Niciun angajat încă. Adaugă primul angajat din butonul de mai sus.
+                  </td>
+                </tr>
+              )}
+              {employees?.map((emp) => (
+                <tr key={emp.id} className="hover:bg-accent/40">
+                  <td className="px-6 py-3 font-medium">
+                    {emp.user.firstName} {emp.user.lastName}
+                    <p className="font-normal text-muted-foreground">{emp.user.email}</p>
+                  </td>
+                  <td className="px-6 py-3 text-muted-foreground">{emp.employeeCode}</td>
+                  <td className="px-6 py-3">{emp.position}</td>
+                  <td className="px-6 py-3 text-muted-foreground">{emp.department?.name ?? '—'}</td>
+                  <td className="px-6 py-3">
+                    <Badge variant={statusVariant[emp.user.status] ?? 'secondary'}>{emp.user.status}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
