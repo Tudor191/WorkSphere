@@ -8,6 +8,7 @@ export class AuthUserDto {
   @ApiProperty() companyId!: string;
   @ApiProperty() companySlug!: string;
   @ApiProperty() role!: string;
+  @ApiProperty() mustChangePassword!: boolean;
 }
 
 export class AuthResponseDto {

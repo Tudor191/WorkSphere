@@ -26,3 +26,11 @@ export function useChangePassword() {
       apiFetch<void>('/auth/change-password', { method: 'POST', body: JSON.stringify(input) }),
   });
 }
+
+/** Ecranul obligatoriu de la prima autentificare cu parolă temporară — nu cere parola veche. */
+export function useSetPassword() {
+  return useMutation({
+    mutationFn: (newPassword: string) =>
+      apiFetch<void>('/auth/set-password', { method: 'POST', body: JSON.stringify({ newPassword }) }),
+  });
+}

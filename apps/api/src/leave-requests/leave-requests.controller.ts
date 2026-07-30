@@ -26,6 +26,13 @@ export class LeaveRequestsController {
     return this.leaveRequestsService.findMine();
   }
 
+  @Get('pending-count')
+  @RequirePermission('leave_requests:approve')
+  @ApiOperation({ summary: 'Numărul de cereri în așteptare — pentru badge-ul de notificare' })
+  countPending() {
+    return this.leaveRequestsService.countPending();
+  }
+
   @Get('balances/mine')
   @RequirePermission('leave_requests:read')
   @ApiOperation({ summary: 'Soldul propriu de concediu pe anul curent' })

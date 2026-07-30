@@ -30,6 +30,21 @@ export function useLeaveTypes() {
   });
 }
 
+/**
+ * Pentru badge-ul din sidebar — doar cei cu `leave_requests:approve` au
+ * acces la acest endpoint; pentru restul, `isError` rămâne true și
+ * componenta pur și simplu nu afișează nimic (vezi sidebar.tsx).
+ * Reîmprospătat periodic, ca notificarea să apară fără reload manual.
+ */
+export function usePendingLeaveRequestsCount() {
+  return useQuery({
+    queryKey: ['leave-requests', 'pending-count'],
+    queryFn: () => apiFetch<{ count: number }>('/leave-requests/pending-count'),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+}
+
 export function useCreateLeaveRequest() {
   const queryClient = useQueryClient();
   return useMutation({

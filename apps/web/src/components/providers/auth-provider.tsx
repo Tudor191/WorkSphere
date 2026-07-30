@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import type { AuthResponse, AuthUser, LoginInput, RegisterInput } from '@worksphere/shared-types';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { tokenStore } from '@/lib/token-store';
@@ -19,6 +20,7 @@ const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
@@ -46,30 +48,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const login = React.useCallback(async (input: LoginInput) => {
-    const data = await apiFetch<AuthResponse>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    tokenStore.set(data.accessToken);
-    setUser(data.user);
-  }, []);
+  const login = React.useCallback(
+    async (input: LoginInput) => {
+      const data = await apiFetch<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      tokenStore.set(data.accessToken);
+      // Șterge orice date rămase în cache de la o sesiune anterioară (alt
+      // utilizator, altă companie) — altfel, pentru o clipă (sau până la
+      // următorul refetch), UI-ul poate afișa date cache-uite ale
+      // fostului utilizator ca fiind ale celui nou-logat.
+      queryClient.clear();
+      setUser(data.user);
+    },
+    [queryClient],
+  );
 
-  const register = React.useCallback(async (input: RegisterInput) => {
-    const data = await apiFetch<AuthResponse>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    tokenStore.set(data.accessToken);
-    setUser(data.user);
-  }, []);
+  const register = React.useCallback(
+    async (input: RegisterInput) => {
+      const data = await apiFetch<AuthResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      tokenStore.set(data.accessToken);
+      queryClient.clear();
+      setUser(data.user);
+    },
+    [queryClient],
+  );
 
   const logout = React.useCallback(async () => {
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     tokenStore.set(null);
     setUser(null);
+    queryClient.clear();
     router.push('/login');
-  }, [router]);
+  }, [router, queryClient]);
 
   const refreshProfile = React.useCallback(async () => {
     const profile = await apiFetch<AuthUser>('/auth/me');

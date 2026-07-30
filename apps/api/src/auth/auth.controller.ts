@@ -23,6 +23,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -99,6 +100,7 @@ export class AuthController {
       companyId: profile.companyId,
       companySlug: profile.companySlug,
       role: profile.roleName,
+      mustChangePassword: profile.mustChangePassword,
     };
   }
 
@@ -118,6 +120,7 @@ export class AuthController {
       companyId: profile.companyId,
       companySlug: profile.companySlug,
       role: profile.roleName,
+      mustChangePassword: profile.mustChangePassword,
     };
   }
 
@@ -130,6 +133,19 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
     await this.authService.changePassword(user.userId, dto);
+  }
+
+  @Post('set-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @AuditLogEntity('User')
+  @ApiOperation({
+    summary: 'Setează parola proprie prima dată (înlocuiește parola temporară generată la creare)',
+  })
+  async setPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetPasswordDto,
+  ): Promise<void> {
+    await this.authService.setPassword(user.userId, dto);
   }
 
   @Public()
@@ -175,6 +191,7 @@ export class AuthController {
       companyId: string;
       companySlug: string;
       roleName: string;
+      mustChangePassword: boolean;
     },
   ): AuthResponseDto {
     return {
@@ -187,6 +204,7 @@ export class AuthController {
         companyId: user.companyId,
         companySlug: user.companySlug,
         role: user.roleName,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }

@@ -37,6 +37,14 @@ export class LeaveRequestsService {
     });
   }
 
+  /** Pentru badge-ul de notificare din sidebar, vizibil doar celor care pot aproba. */
+  async countPending() {
+    const count = await this.prisma.tenantScoped.leaveRequest.count({
+      where: { status: 'PENDING' },
+    });
+    return { count };
+  }
+
   async findMine() {
     const employee = await this.requireCurrentEmployee();
     return this.prisma.tenantScoped.leaveRequest.findMany({

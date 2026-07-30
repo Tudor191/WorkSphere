@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Building2, CalendarClock, Clock, LayoutDashboard, Settings, Users } from 'lucide-react';
 import { Logo } from '@/components/logo';
+import { usePendingLeaveRequestsCount } from '@/hooks/use-leave-requests';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -17,6 +18,9 @@ const navItems = [
 
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
+  // 403 pentru cine nu poate aproba concedii — isError rămâne true, nu afișăm nimic.
+  const { data: pending } = usePendingLeaveRequestsCount();
+  const pendingCount = pending?.count ?? 0;
 
   return (
     <aside className={cn('flex h-full w-64 flex-col border-r border-border bg-card', className)}>
@@ -29,6 +33,7 @@ export function Sidebar({ className }: { className?: string }) {
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
         {navItems.map((item) => {
           const active = item.href === '/dashboard' ? pathname === item.href : pathname?.startsWith(item.href);
+          const showBadge = item.href === '/dashboard/leave-requests' && pendingCount > 0;
           return (
             <Link
               key={item.href}
@@ -41,7 +46,12 @@ export function Sidebar({ className }: { className?: string }) {
               )}
             >
               <item.icon className="h-4 w-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {showBadge && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
             </Link>
           );
         })}

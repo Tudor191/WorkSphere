@@ -70,6 +70,7 @@ export class EmployeesService {
             lastName: dto.lastName,
             roleId: dto.roleId,
             status: 'ACTIVE',
+            mustChangePassword: true,
           },
         });
 

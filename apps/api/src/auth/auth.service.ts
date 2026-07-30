@@ -1,5 +1,11 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -15,6 +21,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
 import { JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -35,6 +42,7 @@ interface AuthContextUser {
   companySlug: string;
   roleId: string;
   roleName: string;
+  mustChangePassword: boolean;
 }
 
 /**
@@ -100,6 +108,7 @@ export class AuthService {
       companySlug: user.company.slug,
       roleId: user.roleId,
       roleName: user.role.name,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 
@@ -124,6 +133,7 @@ export class AuthService {
         companySlug: user.company.slug,
         roleId: user.roleId,
         roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
       };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -143,7 +153,31 @@ export class AuthService {
       throw new UnauthorizedException('Parola curentă este incorectă.');
     }
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
-    await this.prisma.tenantScoped.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.prisma.tenantScoped.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+  }
+
+  /**
+   * Ecranul obligatoriu de la prima autentificare cu o parolă temporară
+   * generată random (vezi EmployeesService.create). Nu cere parola curentă
+   * (utilizatorul tocmai s-a autentificat cu ea) — dar e utilizabil STRICT
+   * cât timp `mustChangePassword` e true, ca să nu devină o cale ocolitoare
+   * pentru schimbarea parolei fără a o cunoaște pe cea veche.
+   */
+  async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mustChangePassword) {
+      throw new ForbiddenException(
+        'Acest cont nu are o schimbare de parolă obligatorie — folosește schimbarea parolei din setările contului.',
+      );
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.tenantScoped.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
   }
 
   private async doRegister(
@@ -261,6 +295,7 @@ export class AuthService {
         companySlug: result.company.slug,
         roleId: result.user.roleId,
         roleName: result.roleName,
+        mustChangePassword: result.user.mustChangePassword,
       },
     };
   }
@@ -306,6 +341,7 @@ export class AuthService {
         companySlug: user.company.slug,
         roleId: user.roleId,
         roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -354,6 +390,7 @@ export class AuthService {
         companySlug: user.company.slug,
         roleId: user.roleId,
         roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
