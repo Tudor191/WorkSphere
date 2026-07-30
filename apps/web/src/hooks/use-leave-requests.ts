@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { LeaveBalance, LeaveRequest } from '@worksphere/shared-types';
+import type { LeaveBalance, LeaveRequest, LeaveType } from '@worksphere/shared-types';
 import { apiFetch } from '@/lib/api-client';
 
 export function useLeaveRequests() {
@@ -20,6 +20,13 @@ export function useMyLeaveBalances() {
   return useQuery({
     queryKey: ['leave-balances', 'mine'],
     queryFn: () => apiFetch<LeaveBalance[]>('/leave-requests/balances/mine'),
+  });
+}
+
+export function useLeaveTypes() {
+  return useQuery({
+    queryKey: ['leave-types'],
+    queryFn: () => apiFetch<LeaveType[]>('/leave-requests/types'),
   });
 }
 

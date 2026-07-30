@@ -58,6 +58,17 @@ export class LeaveRequestsService {
     return this.getBalances(employee.id);
   }
 
+  /**
+   * Lista tipurilor de concediu ale companiei (Concediu de odihnă, medical
+   * etc.) — separată de `getBalances`, care întoarce doar tipurile pentru
+   * care angajatul are deja un sold creat. Fără acest endpoint, un angajat
+   * nou (fără nicio cerere aprobată încă) nu are ce alege în formularul de
+   * cerere de concediu, pentru că soldul se creează abia la aprobare.
+   */
+  getLeaveTypes() {
+    return this.prisma.tenantScoped.leaveType.findMany({ orderBy: { name: 'asc' } });
+  }
+
   async create(dto: CreateLeaveRequestDto) {
     const employee = await this.requireCurrentEmployee();
     const startDate = new Date(dto.startDate);

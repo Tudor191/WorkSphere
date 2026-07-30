@@ -86,7 +86,16 @@ export const PERMISSION_CATALOG: Array<{
 export const SYSTEM_ROLES = ['ADMIN', 'MANAGER', 'HR', 'ACCOUNTANT', 'EMPLOYEE'] as const;
 export type SystemRole = (typeof SYSTEM_ROLES)[number];
 
-/** Permisiuni implicite per rol de sistem, la crearea unei companii noi. */
+/**
+ * Permisiuni implicite per rol de sistem, la crearea unei companii noi.
+ *
+ * IMPORTANT: `leave_requests:create`/`:read` și `attendance:create`/`:read`
+ * sunt acțiuni de auto-service — orice om care lucrează în companie își
+ * cere propriul concediu și își face propriul pontaj, indiferent de rol
+ * de management (Manager/HR/Contabil aprobă/gestionează pentru ALȚII, dar
+ * rămân și ei angajați cu nevoi proprii). Toate cele 5 roluri de sistem
+ * TREBUIE să le aibă — la adăugarea unui rol nou, verifică explicit asta.
+ */
 export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
   // Admin de companie: acces total.
   ADMIN: PERMISSION_CATALOG.map((p) => `${p.resource}:${p.action}`),
@@ -94,9 +103,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
   MANAGER: [
     'employees:read',
     'departments:manage',
+    'leave_requests:create',
     'leave_requests:read',
     'leave_requests:read_all',
     'leave_requests:approve',
+    'attendance:create',
     'attendance:read',
     'calendar_events:manage',
     'documents:create',
@@ -121,10 +132,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
     'employees:update',
     'employees:delete',
     'departments:manage',
+    'leave_requests:create',
     'leave_requests:read',
     'leave_requests:read_all',
     'leave_requests:approve',
     'leave_types:manage',
+    'attendance:create',
     'attendance:read',
     'attendance:manage',
     'calendar_events:manage',
@@ -139,6 +152,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
   ACCOUNTANT: [
     'billing:read',
     'employees:read',
+    'leave_requests:create',
+    'leave_requests:read',
+    'attendance:create',
+    'attendance:read',
     'clients:manage',
     'documents:create',
     'documents:read',

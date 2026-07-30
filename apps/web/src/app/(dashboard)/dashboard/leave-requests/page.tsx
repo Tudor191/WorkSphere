@@ -19,6 +19,7 @@ import {
   useApproveLeaveRequest,
   useCreateLeaveRequest,
   useLeaveRequests,
+  useLeaveTypes,
   useMyLeaveBalances,
   useMyLeaveRequests,
   useRejectLeaveRequest,
@@ -41,6 +42,7 @@ const statusLabel: Record<string, string> = {
 
 export default function LeaveRequestsPage() {
   const { data: balances } = useMyLeaveBalances();
+  const { data: leaveTypes } = useLeaveTypes();
   const { data: myRequests } = useMyLeaveRequests();
   const { data: allRequests, isError: allRequestsForbidden } = useLeaveRequests();
   const createRequest = useCreateLeaveRequest();
@@ -50,12 +52,6 @@ export default function LeaveRequestsPage() {
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({ leaveTypeId: '', startDate: '', endDate: '', reason: '' });
-
-  const leaveTypeOptions = React.useMemo(() => {
-    const map = new Map<string, string>();
-    balances?.forEach((b) => map.set(b.leaveTypeId, b.leaveType.name));
-    return Array.from(map.entries());
-  }, [balances]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,9 +95,9 @@ export default function LeaveRequestsPage() {
                   <option value="" disabled>
                     Alege tipul
                   </option>
-                  {leaveTypeOptions.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
+                  {leaveTypes?.map((lt) => (
+                    <option key={lt.id} value={lt.id}>
+                      {lt.name}
                     </option>
                   ))}
                 </select>
