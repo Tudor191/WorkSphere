@@ -1,3 +1,6 @@
+import { config as loadEnv } from 'dotenv';
+loadEnv();
+
 import { PrismaClient } from './generated/client';
 import bcrypt from 'bcrypt';
 import { PERMISSION_CATALOG, DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES } from '../src/permissions';
