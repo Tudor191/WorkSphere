@@ -56,7 +56,7 @@ export class EmployeesController {
   @RequirePermission('employees:delete')
   @AuditLogEntity('Employee')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Dezactivează angajat' })
+  @ApiOperation({ summary: 'Demite angajat' })
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.remove(id, user.userId);
   }

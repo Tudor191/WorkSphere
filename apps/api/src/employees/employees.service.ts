@@ -157,32 +157,30 @@ export class EmployeesService {
   }
 
   /**
-   * "Ștergere" = dezactivare (suspendare cont + închidere fișă HR), nu
-   * DELETE fizic — un angajat șters din greșeală sau plecat din companie
+   * "Ștergere" = demitere (suspendare cont + închidere fișă HR), nu
+   * DELETE fizic — un angajat demis din greșeală sau plecat din companie
    * trebuie să rămână în istoricul de audit/pontaj/concedii. Hard-delete
    * ar rupe integritatea rapoartelor istorice.
    *
    * Rangul rolului (Admin/Manager/etc.) nu contează aici — orice utilizator
-   * cu permisiunea `employees:delete` poate dezactiva pe oricine, INDIFERENT
-   * de rol. Singurele două restricții: nu te poți dezactiva pe tine însuți,
+   * cu permisiunea `employees:delete` poate demite pe oricine, INDIFERENT
+   * de rol. Singurele două restricții: nu te poți demite pe tine însuți,
    * și fondatorul companiei (primul angajat creat, la înregistrare) nu
-   * poate fi dezactivat de altcineva — altfel un al doilea cont Admin ar
+   * poate fi demis de altcineva — altfel un al doilea cont Admin ar
    * putea bloca accesul fondatorului la propria companie.
    */
   async remove(id: string, currentUserId: string) {
     const employee = await this.findOne(id);
 
     if (employee.userId === currentUserId) {
-      throw new ForbiddenException('Nu îți poți dezactiva propriul cont.');
+      throw new ForbiddenException('Nu te poți demite singur.');
     }
 
     const founder = await this.prisma.tenantScoped.employee.findFirst({
       orderBy: { createdAt: 'asc' },
     });
     if (founder?.id === id) {
-      throw new ForbiddenException(
-        'Fondatorul companiei nu poate fi dezactivat de alți utilizatori.',
-      );
+      throw new ForbiddenException('Fondatorul companiei nu poate fi demis de alți utilizatori.');
     }
 
     await this.prisma.runInTenantTransaction(async (tx) => {

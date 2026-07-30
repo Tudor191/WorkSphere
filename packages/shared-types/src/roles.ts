@@ -13,7 +13,7 @@ export interface RoleInfo {
   key: SystemRoleKey;
   labelRo: string;
   descriptionRo: string;
-  /** 5 = cel mai înalt rang, 1 = cel mai jos. Manager și HR sunt la același nivel (roluri paralele, nu unul peste altul). */
+  /** 5 = cel mai înalt rang, 1 = cel mai jos. */
   level: 1 | 2 | 3 | 4 | 5;
 }
 
@@ -35,9 +35,8 @@ export const ROLE_INFO: Record<SystemRoleKey, RoleInfo> = {
   HR: {
     key: 'HR',
     labelRo: 'Resurse Umane',
-    descriptionRo:
-      'Gestionează angajați (adăugare/editare/dezactivare), departamente, concedii și pontaje.',
-    level: 4,
+    descriptionRo: 'Gestionează fișele angajaților (adăugare/editare/demitere), departamente și pontaje.',
+    level: 3,
   },
   ACCOUNTANT: {
     key: 'ACCOUNTANT',

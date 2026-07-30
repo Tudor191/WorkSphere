@@ -5,6 +5,7 @@ import { Pencil, Plus, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,7 @@ import { useRoles } from '@/hooks/use-roles';
 import { useDepartments } from '@/hooks/use-departments';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ApiError } from '@/lib/api-client';
-import { ROLE_ORDER, roleLabelRo, type Employee, type Role } from '@worksphere/shared-types';
+import { ROLE_INFO, ROLE_ORDER, roleLabelRo, type Employee, type Role } from '@worksphere/shared-types';
 
 function sortByHierarchy(roles: Role[] | undefined): Role[] {
   if (!roles) return [];
@@ -99,7 +100,7 @@ export default function EmployeesPage() {
       await deleteEmployee.mutateAsync(toRemove.id);
       setToRemove(null);
     } catch (err) {
-      setRemoveError(err instanceof ApiError ? err.message : 'Eroare la dezactivarea angajatului.');
+      setRemoveError(err instanceof ApiError ? err.message : 'Eroare la demiterea angajatului.');
     }
   };
 
@@ -231,6 +232,30 @@ export default function EmployeesPage() {
         </Dialog>
       </div>
 
+      <Card className="px-6">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="roles-faq" className="border-b-0">
+            <AccordionTrigger>Ce înseamnă fiecare rol?</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                {ROLE_ORDER.map((key) => (
+                  <div key={key} className="flex items-start gap-3">
+                    <Badge variant="secondary" className="mt-0.5 shrink-0">
+                      {ROLE_INFO[key].labelRo}
+                    </Badge>
+                    <p>{ROLE_INFO[key].descriptionRo}</p>
+                  </div>
+                ))}
+                <p className="pt-1 text-xs">
+                  Momentan sunt 5 roluri fixe, aceleași pentru toate companiile — roluri
+                  personalizate, definite de fiecare companie, urmează într-o etapă viitoare.
+                </p>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Card>
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -290,7 +315,7 @@ export default function EmployeesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Dezactivează angajat"
+                        aria-label="Demite angajat"
                         onClick={() => {
                           setRemoveError(null);
                           setToRemove(emp);
@@ -310,10 +335,10 @@ export default function EmployeesPage() {
       <Dialog open={!!toRemove} onOpenChange={(v) => !v && setToRemove(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dezactivează angajat</DialogTitle>
+            <DialogTitle>Demite angajat</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Ești sigur că vrei să dezactivezi contul lui{' '}
+            Ești sigur că vrei să-l demiți pe{' '}
             <span className="font-medium text-foreground">
               {toRemove?.user.firstName} {toRemove?.user.lastName}
             </span>
@@ -325,7 +350,7 @@ export default function EmployeesPage() {
               Anulează
             </Button>
             <Button variant="destructive" disabled={deleteEmployee.isPending} onClick={confirmRemove}>
-              {deleteEmployee.isPending ? 'Se dezactivează...' : 'Dezactivează'}
+              {deleteEmployee.isPending ? 'Se demite...' : 'Demite'}
             </Button>
           </DialogFooter>
         </DialogContent>
