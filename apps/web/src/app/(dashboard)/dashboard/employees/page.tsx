@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Pencil, Plus, UserX } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -17,7 +17,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateEmployee, useDeleteEmployee, useEmployees, useUpdateEmployeeRole } from '@/hooks/use-employees';
+import {
+  useCreateEmployee,
+  useDeleteEmployee,
+  useEmployees,
+  useHardDeleteEmployee,
+  useUpdateEmployeeRole,
+} from '@/hooks/use-employees';
 import { useRoles } from '@/hooks/use-roles';
 import { useDepartments } from '@/hooks/use-departments';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -45,6 +51,7 @@ export default function EmployeesPage() {
   const { data: departments } = useDepartments();
   const createEmployee = useCreateEmployee();
   const deleteEmployee = useDeleteEmployee();
+  const hardDeleteEmployee = useHardDeleteEmployee();
   const updateEmployeeRole = useUpdateEmployeeRole();
   const { user } = useAuth();
 
@@ -56,6 +63,8 @@ export default function EmployeesPage() {
   const [successPassword, setSuccessPassword] = React.useState<string | null>(null);
   const [toRemove, setToRemove] = React.useState<Employee | null>(null);
   const [removeError, setRemoveError] = React.useState<string | null>(null);
+  const [toHardDelete, setToHardDelete] = React.useState<Employee | null>(null);
+  const [hardDeleteError, setHardDeleteError] = React.useState<string | null>(null);
   const [toPromote, setToPromote] = React.useState<Employee | null>(null);
   const [promoteForm, setPromoteForm] = React.useState({ position: '', roleId: '' });
   const [promoteError, setPromoteError] = React.useState<string | null>(null);
@@ -101,6 +110,17 @@ export default function EmployeesPage() {
       setToRemove(null);
     } catch (err) {
       setRemoveError(err instanceof ApiError ? err.message : 'Eroare la demiterea angajatului.');
+    }
+  };
+
+  const confirmHardDelete = async () => {
+    if (!toHardDelete) return;
+    setHardDeleteError(null);
+    try {
+      await hardDeleteEmployee.mutateAsync(toHardDelete.id);
+      setToHardDelete(null);
+    } catch (err) {
+      setHardDeleteError(err instanceof ApiError ? err.message : 'Eroare la ștergerea definitivă.');
     }
   };
 
@@ -324,6 +344,19 @@ export default function EmployeesPage() {
                         <UserX className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
+                    {emp.user.status === 'SUSPENDED' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Șterge definitiv"
+                        onClick={() => {
+                          setHardDeleteError(null);
+                          setToHardDelete(emp);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -351,6 +384,37 @@ export default function EmployeesPage() {
             </Button>
             <Button variant="destructive" disabled={deleteEmployee.isPending} onClick={confirmRemove}>
               {deleteEmployee.isPending ? 'Se demite...' : 'Demite'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!toHardDelete} onOpenChange={(v) => !v && setToHardDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Șterge definitiv contul</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Contul lui{' '}
+            <span className="font-medium text-foreground">
+              {toHardDelete?.user.firstName} {toHardDelete?.user.lastName}
+            </span>{' '}
+            va fi șters ireversibil din baza de date — fișa HR, istoricul de pontaj și cererile de
+            concediu dispar complet și nu mai pot fi recuperate. Singurul motiv să faci asta e ca
+            emailul <span className="font-medium text-foreground">{toHardDelete?.user.email}</span>{' '}
+            să poată fi folosit la un cont nou.
+          </p>
+          {hardDeleteError && <p className="text-sm text-destructive">{hardDeleteError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToHardDelete(null)}>
+              Anulează
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={hardDeleteEmployee.isPending}
+              onClick={confirmHardDelete}
+            >
+              {hardDeleteEmployee.isPending ? 'Se șterge...' : 'Șterge definitiv'}
             </Button>
           </DialogFooter>
         </DialogContent>

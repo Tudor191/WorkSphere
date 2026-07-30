@@ -34,7 +34,12 @@ export const PERMISSION_CATALOG: Array<{
   { resource: 'employees', action: 'create', description: 'Adăugare angajați' },
   { resource: 'employees', action: 'read', description: 'Vizualizare angajați' },
   { resource: 'employees', action: 'update', description: 'Editare angajați' },
-  { resource: 'employees', action: 'delete', description: 'Ștergere angajați' },
+  { resource: 'employees', action: 'delete', description: 'Dezactivare (suspendare) angajați' },
+  {
+    resource: 'employees',
+    action: 'hard_delete',
+    description: 'Ștergere definitivă din baza de date (ireversibil, doar după dezactivare)',
+  },
   { resource: 'departments', action: 'manage', description: 'Creare/editare/ștergere departamente' },
 
   // Concedii
@@ -102,6 +107,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
 
   MANAGER: [
     'employees:read',
+    'employees:delete',
+    'employees:hard_delete',
     'departments:manage',
     'leave_requests:create',
     'leave_requests:read',
@@ -135,7 +142,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, string[]> = {
     'leave_requests:create',
     'leave_requests:read',
     'leave_requests:read_all',
-    'leave_requests:approve',
     'leave_types:manage',
     'attendance:create',
     'attendance:read',

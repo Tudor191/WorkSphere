@@ -189,4 +189,58 @@ export class EmployeesService {
       await tx.employee.update({ where: { id }, data: { endDate: new Date() } });
     });
   }
+
+  /**
+   * Ștergere definitivă (ireversibilă) din baza de date — spre deosebire de
+   * `remove()`, care doar suspendă. Necesară în special ca email-ul demis
+   * să poată fi refolosit la crearea unui cont nou (`email` e unic global,
+   * vezi schema `User`). Rezervată nivelurilor 4-5 (Manager/Admin) — vezi
+   * `RequirePermission('employees:hard_delete')` pe controller.
+   *
+   * Precondiție obligatorie: contul trebuie să fie DEJA suspendat (fluxul
+   * e mereu demite → apoi, separat, șterge definitiv — niciodată direct),
+   * ca un hard-delete accidental să nu fie la un click distanță pe un cont
+   * încă activ.
+   *
+   * Curăță explicit referințele opționale care nu au CASCADE în schemă
+   * (`LeaveRequest.approvedById`, `AuditLog.userId`) — altfel ștergerea ar
+   * eșua pe constrângere de FK pentru orice Manager/Admin care a aprobat
+   * vreodată o cerere sau a făcut vreo acțiune auditată. Modulele
+   * neimplementate încă (Documente, CRM, Proiecte, Chat) au propriile
+   * referințe fără CASCADE către User — nu sunt curățate aici pentru că
+   * azi nu pot conține date (nu există endpoint-uri care să scrie în ele);
+   * de revizuit când acele module devin funcționale.
+   */
+  async hardDelete(id: string, currentUserId: string) {
+    const employee = await this.findOne(id);
+
+    if (employee.userId === currentUserId) {
+      throw new ForbiddenException('Nu îți poți șterge propriul cont.');
+    }
+    if (employee.user.status !== 'SUSPENDED') {
+      throw new ConflictException(
+        'Contul trebuie demis (dezactivat) înainte de a putea fi șters definitiv.',
+      );
+    }
+
+    const founder = await this.prisma.tenantScoped.employee.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
+    if (founder?.id === id) {
+      throw new ForbiddenException('Fondatorul companiei nu poate fi șters.');
+    }
+
+    await this.prisma.runInTenantTransaction(async (tx) => {
+      await tx.leaveRequest.updateMany({
+        where: { approvedById: employee.userId },
+        data: { approvedById: null },
+      });
+      await tx.auditLog.updateMany({
+        where: { userId: employee.userId },
+        data: { userId: null },
+      });
+      await tx.employee.delete({ where: { id } });
+      await tx.user.delete({ where: { id: employee.userId } });
+    });
+  }
 }

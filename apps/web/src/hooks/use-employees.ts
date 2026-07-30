@@ -41,6 +41,15 @@ export function useDeleteEmployee() {
   });
 }
 
+/** Ștergere definitivă (ireversibilă) — doar pentru conturi deja demise. */
+export function useHardDeleteEmployee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/employees/${id}/permanent`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  });
+}
+
 export interface PromoteEmployeeInput {
   id: string;
   position: string;

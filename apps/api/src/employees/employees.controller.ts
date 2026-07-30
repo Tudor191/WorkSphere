@@ -60,4 +60,13 @@ export class EmployeesController {
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.employeesService.remove(id, user.userId);
   }
+
+  @Delete(':id/permanent')
+  @RequirePermission('employees:hard_delete')
+  @AuditLogEntity('Employee')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Șterge definitiv un cont deja demis (ireversibil)' })
+  hardDelete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.employeesService.hardDelete(id, user.userId);
+  }
 }
