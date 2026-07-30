@@ -32,3 +32,11 @@ export function useCreateEmployee() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   });
 }
+
+export function useDeleteEmployee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/employees/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  });
+}

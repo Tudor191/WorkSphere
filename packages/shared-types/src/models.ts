@@ -115,3 +115,30 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   employee?: Employee;
 }
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  slug: string;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  currency: string;
+  maxEmployees: number;
+  features: { modules: string[]; aiCreditsPerMonth: number };
+  isActive: boolean;
+}
+
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
+export type BillingCycle = 'MONTHLY' | 'YEARLY';
+
+export interface Subscription {
+  id: string;
+  companyId: string;
+  planId: string;
+  status: SubscriptionStatus;
+  billingCycle: BillingCycle;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  plan: SubscriptionPlan;
+}

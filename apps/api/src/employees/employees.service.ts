@@ -1,5 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,7 +22,7 @@ export class EmployeesService {
   findAll() {
     return this.prisma.tenantScoped.employee.findMany({
       include: { user: { select: SAFE_USER_SELECT }, department: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { employeeCode: 'asc' },
     });
   }
 
@@ -133,9 +138,30 @@ export class EmployeesService {
    * DELETE fizic — un angajat șters din greșeală sau plecat din companie
    * trebuie să rămână în istoricul de audit/pontaj/concedii. Hard-delete
    * ar rupe integritatea rapoartelor istorice.
+   *
+   * Rangul rolului (Admin/Manager/etc.) nu contează aici — orice utilizator
+   * cu permisiunea `employees:delete` poate dezactiva pe oricine, INDIFERENT
+   * de rol. Singurele două restricții: nu te poți dezactiva pe tine însuți,
+   * și fondatorul companiei (primul angajat creat, la înregistrare) nu
+   * poate fi dezactivat de altcineva — altfel un al doilea cont Admin ar
+   * putea bloca accesul fondatorului la propria companie.
    */
-  async remove(id: string) {
+  async remove(id: string, currentUserId: string) {
     const employee = await this.findOne(id);
+
+    if (employee.userId === currentUserId) {
+      throw new ForbiddenException('Nu îți poți dezactiva propriul cont.');
+    }
+
+    const founder = await this.prisma.tenantScoped.employee.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
+    if (founder?.id === id) {
+      throw new ForbiddenException(
+        'Fondatorul companiei nu poate fi dezactivat de alți utilizatori.',
+      );
+    }
+
     await this.prisma.runInTenantTransaction(async (tx) => {
       await tx.user.update({ where: { id: employee.userId }, data: { status: 'SUSPENDED' } });
       await tx.employee.update({ where: { id }, data: { endDate: new Date() } });

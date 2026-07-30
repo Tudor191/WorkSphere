@@ -3,11 +3,18 @@ import { ConflictException, Injectable, Logger, UnauthorizedException } from '@n
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES, type SystemRole } from '@worksphere/database';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  Prisma,
+  SYSTEM_ROLES,
+  type SystemRole,
+} from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -94,6 +101,49 @@ export class AuthService {
       roleId: user.roleId,
       roleName: user.role.name,
     };
+  }
+
+  /** Actualizează nume/email pentru contul autentificat curent (nu necesită parola). */
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<AuthContextUser> {
+    try {
+      const user = await this.prisma.tenantScoped.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+          ...(dto.email !== undefined ? { email: dto.email } : {}),
+        },
+        include: { company: true, role: true },
+      });
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        companyId: user.companyId,
+        companySlug: user.company.slug,
+        roleId: user.roleId,
+        roleName: user.role.name,
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Există deja un cont cu acest email.');
+      }
+      throw error;
+    }
+  }
+
+  /** Schimbă parola contului autentificat curent — necesită parola curentă corectă. */
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({ where: { id: userId } });
+    const currentMatches = user.passwordHash
+      ? await bcrypt.compare(dto.currentPassword, user.passwordHash)
+      : false;
+    if (!currentMatches) {
+      throw new UnauthorizedException('Parola curentă este incorectă.');
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.tenantScoped.user.update({ where: { id: userId }, data: { passwordHash } });
   }
 
   private async doRegister(

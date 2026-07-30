@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -16,10 +16,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateEmployee, useEmployees } from '@/hooks/use-employees';
+import { useCreateEmployee, useDeleteEmployee, useEmployees } from '@/hooks/use-employees';
 import { useRoles } from '@/hooks/use-roles';
 import { useDepartments } from '@/hooks/use-departments';
+import { useAuth } from '@/components/providers/auth-provider';
 import { ApiError } from '@/lib/api-client';
+import type { Employee } from '@worksphere/shared-types';
 
 const statusVariant: Record<string, 'success' | 'warning' | 'secondary'> = {
   ACTIVE: 'success',
@@ -32,10 +34,14 @@ export default function EmployeesPage() {
   const { data: roles } = useRoles();
   const { data: departments } = useDepartments();
   const createEmployee = useCreateEmployee();
+  const deleteEmployee = useDeleteEmployee();
+  const { user } = useAuth();
 
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successPassword, setSuccessPassword] = React.useState<string | null>(null);
+  const [toRemove, setToRemove] = React.useState<Employee | null>(null);
+  const [removeError, setRemoveError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({
     email: '',
     firstName: '',
@@ -67,6 +73,17 @@ export default function EmployeesPage() {
       resetForm();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Eroare la crearea angajatului.');
+    }
+  };
+
+  const confirmRemove = async () => {
+    if (!toRemove) return;
+    setRemoveError(null);
+    try {
+      await deleteEmployee.mutateAsync(toRemove.id);
+      setToRemove(null);
+    } catch (err) {
+      setRemoveError(err instanceof ApiError ? err.message : 'Eroare la dezactivarea angajatului.');
     }
   };
 
@@ -190,19 +207,20 @@ export default function EmployeesPage() {
                 <th className="px-6 py-3 font-medium">Funcție</th>
                 <th className="px-6 py-3 font-medium">Departament</th>
                 <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                     Se încarcă...
                   </td>
                 </tr>
               )}
               {!isLoading && employees?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                     Niciun angajat încă. Adaugă primul angajat din butonul de mai sus.
                   </td>
                 </tr>
@@ -219,12 +237,51 @@ export default function EmployeesPage() {
                   <td className="px-6 py-3">
                     <Badge variant={statusVariant[emp.user.status] ?? 'secondary'}>{emp.user.status}</Badge>
                   </td>
+                  <td className="px-6 py-3 text-right">
+                    {emp.user.status !== 'SUSPENDED' && emp.userId !== user?.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Dezactivează angajat"
+                        onClick={() => {
+                          setRemoveError(null);
+                          setToRemove(emp);
+                        }}
+                      >
+                        <UserX className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
+
+      <Dialog open={!!toRemove} onOpenChange={(v) => !v && setToRemove(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dezactivează angajat</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Ești sigur că vrei să dezactivezi contul lui{' '}
+            <span className="font-medium text-foreground">
+              {toRemove?.user.firstName} {toRemove?.user.lastName}
+            </span>
+            ? Fișa HR și istoricul (pontaj, concedii) rămân, dar contul nu se va mai putea autentifica.
+          </p>
+          {removeError && <p className="text-sm text-destructive">{removeError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToRemove(null)}>
+              Anulează
+            </Button>
+            <Button variant="destructive" disabled={deleteEmployee.isPending} onClick={confirmRemove}>
+              {deleteEmployee.isPending ? 'Se dezactivează...' : 'Dezactivează'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

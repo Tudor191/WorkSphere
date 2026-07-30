@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -16,9 +17,12 @@ import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AuditLogEntity } from '../common/decorators/audit-log.decorator';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -96,6 +100,36 @@ export class AuthController {
       companySlug: profile.companySlug,
       role: profile.roleName,
     };
+  }
+
+  @Patch('me')
+  @AuditLogEntity('User')
+  @ApiOperation({ summary: 'Actualizează profilul propriu (nume, email)' })
+  async updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<AuthResponseDto['user']> {
+    const profile = await this.authService.updateProfile(user.userId, dto);
+    return {
+      id: profile.id,
+      email: profile.email,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      companyId: profile.companyId,
+      companySlug: profile.companySlug,
+      role: profile.roleName,
+    };
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @AuditLogEntity('User')
+  @ApiOperation({ summary: 'Schimbă parola contului propriu (necesită parola curentă)' })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.authService.changePassword(user.userId, dto);
   }
 
   @Public()

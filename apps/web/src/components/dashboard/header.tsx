@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Menu } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -40,6 +41,10 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
               {user?.firstName} {user?.lastName}
               <p className="font-normal text-muted-foreground">{user?.role}</p>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/account">Setările contului</Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => logout()}>Deconectare</DropdownMenuItem>
           </DropdownMenuContent>

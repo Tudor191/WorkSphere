@@ -89,6 +89,21 @@
   }
 }
 
+/*
+ * Tranziție lină la comutarea light/dark mode. Scopat strict la
+ * proprietățile de culoare (nu `all`), ca să nu introducă întârzieri
+ * vizibile la interacțiuni cu layout (resize, hover pe elemente cu
+ * transform etc.) — vezi `ThemeProvider` din layout.tsx, unde
+ * `disableTransitionOnChange` a fost eliminat special pentru asta.
+ */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: ease;
+  transition-duration: 200ms;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
