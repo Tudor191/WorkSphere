@@ -97,6 +97,13 @@ export class EmployeesService {
     }
   }
 
+  /**
+   * Folosit și pentru promovare/retrogradare (schimbare rol + funcție).
+   * Dacă angajatul e în prezent singurul Admin ACTIVE al companiei și
+   * `roleId` l-ar scoate din rolul de Admin, blocăm schimbarea — altfel
+   * compania rămâne fără niciun cont care poate gestiona roluri/angajați
+   * (nimeni nu ar mai putea repara greșeala, inclusiv persoana însăși).
+   */
   async update(id: string, dto: UpdateEmployeeDto) {
     const existing = await this.findOne(id);
     const {
@@ -109,6 +116,22 @@ export class EmployeesService {
       position,
       ...userFields
     } = dto;
+
+    if (roleId && roleId !== existing.user.roleId) {
+      const currentRole = await this.prisma.tenantScoped.role.findUnique({
+        where: { id: existing.user.roleId },
+      });
+      if (currentRole?.systemKey === 'ADMIN') {
+        const activeAdmins = await this.prisma.tenantScoped.user.count({
+          where: { status: 'ACTIVE', role: { systemKey: 'ADMIN' } },
+        });
+        if (activeAdmins <= 1) {
+          throw new ForbiddenException(
+            'Nu poți schimba rolul singurului Administrator activ al companiei — atribuie rolul de Administrator altcuiva mai întâi.',
+          );
+        }
+      }
+    }
 
     return this.prisma.runInTenantTransaction(async (tx) => {
       if (Object.keys(userFields).length > 0 || roleId) {

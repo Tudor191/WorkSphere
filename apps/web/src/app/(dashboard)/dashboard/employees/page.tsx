@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Plus, UserX } from 'lucide-react';
+import { Pencil, Plus, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -16,12 +16,21 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateEmployee, useDeleteEmployee, useEmployees } from '@/hooks/use-employees';
+import { useCreateEmployee, useDeleteEmployee, useEmployees, useUpdateEmployeeRole } from '@/hooks/use-employees';
 import { useRoles } from '@/hooks/use-roles';
 import { useDepartments } from '@/hooks/use-departments';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ApiError } from '@/lib/api-client';
-import type { Employee } from '@worksphere/shared-types';
+import { ROLE_ORDER, roleLabelRo, type Employee, type Role } from '@worksphere/shared-types';
+
+function sortByHierarchy(roles: Role[] | undefined): Role[] {
+  if (!roles) return [];
+  return [...roles].sort((a, b) => {
+    const ai = a.systemKey ? ROLE_ORDER.indexOf(a.systemKey as (typeof ROLE_ORDER)[number]) : 99;
+    const bi = b.systemKey ? ROLE_ORDER.indexOf(b.systemKey as (typeof ROLE_ORDER)[number]) : 99;
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+}
 
 const statusVariant: Record<string, 'success' | 'warning' | 'secondary'> = {
   ACTIVE: 'success',
@@ -35,13 +44,20 @@ export default function EmployeesPage() {
   const { data: departments } = useDepartments();
   const createEmployee = useCreateEmployee();
   const deleteEmployee = useDeleteEmployee();
+  const updateEmployeeRole = useUpdateEmployeeRole();
   const { user } = useAuth();
+
+  const sortedRoles = React.useMemo(() => sortByHierarchy(roles), [roles]);
+  const roleById = React.useMemo(() => new Map(roles?.map((r) => [r.id, r])), [roles]);
 
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successPassword, setSuccessPassword] = React.useState<string | null>(null);
   const [toRemove, setToRemove] = React.useState<Employee | null>(null);
   const [removeError, setRemoveError] = React.useState<string | null>(null);
+  const [toPromote, setToPromote] = React.useState<Employee | null>(null);
+  const [promoteForm, setPromoteForm] = React.useState({ position: '', roleId: '' });
+  const [promoteError, setPromoteError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({
     email: '',
     firstName: '',
@@ -84,6 +100,24 @@ export default function EmployeesPage() {
       setToRemove(null);
     } catch (err) {
       setRemoveError(err instanceof ApiError ? err.message : 'Eroare la dezactivarea angajatului.');
+    }
+  };
+
+  const openPromote = (emp: Employee) => {
+    setPromoteError(null);
+    setPromoteForm({ position: emp.position, roleId: emp.user.roleId });
+    setToPromote(emp);
+  };
+
+  const confirmPromote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!toPromote) return;
+    setPromoteError(null);
+    try {
+      await updateEmployeeRole.mutateAsync({ id: toPromote.id, ...promoteForm });
+      setToPromote(null);
+    } catch (err) {
+      setPromoteError(err instanceof ApiError ? err.message : 'Eroare la actualizarea angajatului.');
     }
   };
 
@@ -155,9 +189,9 @@ export default function EmployeesPage() {
                         <SelectValue placeholder="Alege rolul" />
                       </SelectTrigger>
                       <SelectContent>
-                        {roles?.map((r) => (
+                        {sortedRoles.map((r) => (
                           <SelectItem key={r.id} value={r.id}>
-                            {r.name}
+                            {roleLabelRo(r.systemKey, r.name)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -205,6 +239,7 @@ export default function EmployeesPage() {
                 <th className="px-6 py-3 font-medium">Nume</th>
                 <th className="px-6 py-3 font-medium">Cod</th>
                 <th className="px-6 py-3 font-medium">Funcție</th>
+                <th className="px-6 py-3 font-medium">Rol</th>
                 <th className="px-6 py-3 font-medium">Departament</th>
                 <th className="px-6 py-3 font-medium">Status</th>
                 <th className="px-6 py-3 font-medium" />
@@ -213,14 +248,14 @@ export default function EmployeesPage() {
             <tbody className="divide-y divide-border">
               {isLoading && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     Se încarcă...
                   </td>
                 </tr>
               )}
               {!isLoading && employees?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     Niciun angajat încă. Adaugă primul angajat din butonul de mai sus.
                   </td>
                 </tr>
@@ -233,11 +268,24 @@ export default function EmployeesPage() {
                   </td>
                   <td className="px-6 py-3 text-muted-foreground">{emp.employeeCode}</td>
                   <td className="px-6 py-3">{emp.position}</td>
+                  <td className="px-6 py-3 text-muted-foreground">
+                    {roleLabelRo(roleById.get(emp.user.roleId)?.systemKey)}
+                  </td>
                   <td className="px-6 py-3 text-muted-foreground">{emp.department?.name ?? '—'}</td>
                   <td className="px-6 py-3">
                     <Badge variant={statusVariant[emp.user.status] ?? 'secondary'}>{emp.user.status}</Badge>
                   </td>
                   <td className="px-6 py-3 text-right">
+                    {emp.user.status !== 'SUSPENDED' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Editează rol / funcție"
+                        onClick={() => openPromote(emp)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                     {emp.user.status !== 'SUSPENDED' && emp.userId !== user?.id && (
                       <Button
                         variant="ghost"
@@ -280,6 +328,55 @@ export default function EmployeesPage() {
               {deleteEmployee.isPending ? 'Se dezactivează...' : 'Dezactivează'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!toPromote} onOpenChange={(v) => !v && setToPromote(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Editează rol / funcție — {toPromote?.user.firstName} {toPromote?.user.lastName}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={confirmPromote} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Funcție</Label>
+              <Input
+                value={promoteForm.position}
+                onChange={(e) => setPromoteForm((f) => ({ ...f, position: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select
+                value={promoteForm.roleId}
+                onValueChange={(v) => setPromoteForm((f) => ({ ...f, roleId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Alege rolul" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {roleLabelRo(r.systemKey, r.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {promoteError && <p className="text-sm text-destructive">{promoteError}</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setToPromote(null)}>
+                Anulează
+              </Button>
+              <Button type="submit" disabled={updateEmployeeRole.isPending}>
+                {updateEmployeeRole.isPending ? 'Se salvează...' : 'Salvează'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

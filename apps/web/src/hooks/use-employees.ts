@@ -40,3 +40,19 @@ export function useDeleteEmployee() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   });
 }
+
+export interface PromoteEmployeeInput {
+  id: string;
+  position: string;
+  roleId: string;
+}
+
+/** Schimbă funcția și/sau rolul unui angajat existent — folosit la promovare. */
+export function useUpdateEmployeeRole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: PromoteEmployeeInput) =>
+      apiFetch<Employee>(`/employees/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  });
+}
