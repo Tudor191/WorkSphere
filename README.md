@@ -51,12 +51,20 @@ docs/                  Documentație (arhitectură, roadmap, DB)
 # 1. Instalează dependențele
 pnpm install
 
-# 2. Pornește infrastructura locală (Postgres + Redis)
-docker compose up -d postgres redis
-
-# 3. Copiază variabilele de mediu
+# 2. Copiază variabilele de mediu (inclusiv cea de la rădăcină, citită de
+# docker-compose.yml pentru Postgres/Redis/JWT — fără ea, pasul 3 eșuează)
+cp .env.example .env
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
+cp packages/database/.env.example packages/database/.env
+
+# Editează .env, apps/api/.env și packages/database/.env: înlocuiește
+# CHANGE_ME cu valori reale și folosește ACELEAȘI user/parolă/nume de bază
+# de date în toate trei (DATABASE_URL trebuie să fie identic în
+# apps/api/.env și packages/database/.env).
+
+# 3. Pornește infrastructura locală (Postgres + Redis)
+docker compose up -d postgres redis
 
 # 4. Rulează migrațiile + seed
 pnpm db:migrate
