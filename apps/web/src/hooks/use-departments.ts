@@ -22,3 +22,20 @@ export function useCreateDepartment() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['departments'] }),
   });
 }
+
+export function useUpdateDepartment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; name: string; description?: string }) =>
+      apiFetch<Department>(`/departments/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['departments'] }),
+  });
+}
+
+export function useDeleteDepartment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/departments/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['departments'] }),
+  });
+}
