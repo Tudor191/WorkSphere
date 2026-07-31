@@ -30,6 +30,9 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { ApiError } from '@/lib/api-client';
 import { ROLE_INFO, ROLE_ORDER, roleLabelRo, type Employee, type Role } from '@worksphere/shared-types';
 
+/** Radix Select nu acceptă `value=""` pe un item — sentinelă pentru "fără departament". */
+const NO_DEPARTMENT = '__none__';
+
 function sortByHierarchy(roles: Role[] | undefined): Role[] {
   if (!roles) return [];
   return [...roles].sort((a, b) => {
@@ -133,7 +136,7 @@ export default function EmployeesPage() {
     setPromoteForm({
       position: emp.position,
       roleId: emp.user.roleId,
-      departmentId: emp.departmentId ?? '',
+      departmentId: emp.departmentId ?? NO_DEPARTMENT,
     });
     setToPromote(emp);
   };
@@ -146,7 +149,7 @@ export default function EmployeesPage() {
       await updateEmployeeRole.mutateAsync({
         id: toPromote.id,
         ...promoteForm,
-        departmentId: promoteForm.departmentId || null,
+        departmentId: promoteForm.departmentId === NO_DEPARTMENT ? null : promoteForm.departmentId,
       });
       setToPromote(null);
     } catch (err) {
@@ -476,6 +479,7 @@ export default function EmployeesPage() {
                   <SelectValue placeholder="Fără departament" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={NO_DEPARTMENT}>Fără departament</SelectItem>
                   {departments?.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
