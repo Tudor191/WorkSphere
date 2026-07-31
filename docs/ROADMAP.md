@@ -49,14 +49,27 @@
 
 ## Ce urmează (nu a fost implementat fals — necesită decizii de business)
 
-1. **AI Assistant + RAG** — ✅ prima felie implementată: `POST /ai/chat`,
-   asistent conversațional simplu (fără persistență server-side a
-   conversației, fără RAG încă). Are nevoie de `OPENAI_API_KEY` setat în
-   mediul API-ului ca să răspundă efectiv (fără el, întoarce clar 503, nu
-   crapă). Rămâne pentru o felie următoare: RAG-ul propriu-zis peste
-   documente (`Document`/`DocumentChunk`/`DocumentEmbedding`, pgvector) —
-   are nevoie întâi de o decizie asupra stocării fișierelor (S3/MinIO/
-   disc local), nefăcută încă — plus rate limiting pe tokeni per companie
+1. **AI Assistant + RAG** — ✅ prima felie implementată și funcțională
+   (`POST /ai/chat`, asistent conversațional simplu, fără persistență
+   server-side a conversației, fără RAG încă), dar **ținută deliberat în
+   standby**: linkul din sidebar (`/dashboard/assistant`) e scos din
+   navigare — decizie de business, nu bug, ca să nu cheltuim pe credite
+   OpenAI înainte de primii clienți plătitori. Codul rămâne complet
+   funcțional; ca s-o activăm, e nevoie doar de:
+   1. `OPENAI_API_KEY` (+ opțional `OPENAI_MODEL`) în mediul API-ului —
+      fără ea, endpoint-ul întoarce clar 503, nu crapă.
+   2. Readăugarea intrării de sidebar din `apps/web/src/components/dashboard/sidebar.tsx`
+      (comentariul de acolo explică exact ce s-a scos).
+
+   Plan: activăm când avem primii clienți, sau mai devreme dacă vedem
+   cerere clară (volum mare de întrebări către suport care ar putea fi
+   preluate de asistent).
+
+   Rămâne pentru o felie următoare, indiferent de momentul activării:
+   RAG-ul propriu-zis peste documente
+   (`Document`/`DocumentChunk`/`DocumentEmbedding`, pgvector) — are nevoie
+   întâi de o decizie asupra stocării fișierelor (S3/MinIO/disc local),
+   nefăcută încă — plus rate limiting pe tokeni per companie
    (`SubscriptionPlan.aiCreditsPerMonth` există în schemă, dar nu e încă
    aplicat).
 2. **Stripe billing complet** — checkout, webhook-uri, upgrade/downgrade,

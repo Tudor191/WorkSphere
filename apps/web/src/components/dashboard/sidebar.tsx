@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bot,
   Boxes,
   Building2,
   CalendarClock,
@@ -29,7 +28,10 @@ const navItems = [
   { href: '/dashboard/leads', label: 'Lead-uri', icon: Target },
   { href: '/dashboard/products', label: 'Produse', icon: Boxes },
   { href: '/dashboard/chat', label: 'Chat', icon: MessageSquare },
-  { href: '/dashboard/assistant', label: 'Asistent AI', icon: Bot },
+  // 'Asistent AI' (/dashboard/assistant) e deliberat scos din navigare — vezi
+  // docs/ROADMAP.md, secțiunea AI Assistant. Codul rămâne complet funcțional,
+  // în standby, până la primii clienți plătitori; readăugă intrarea aici
+  // (+ cheia OPENAI_API_KEY) când decidem să-l activăm.
   { href: '/dashboard/leave-requests', label: 'Concedii', icon: CalendarClock },
   { href: '/dashboard/attendance', label: 'Pontaj', icon: Clock },
   { href: '/dashboard/settings', label: 'Setări', icon: Settings },
