@@ -6,10 +6,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { AuthResponse, AuthUser, LoginInput, RegisterInput } from '@worksphere/shared-types';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { tokenStore } from '@/lib/token-store';
+import { checkAndRecordIdentity, recordIdentityFromToken, clearRecordedIdentity } from '@/lib/session-identity';
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
+  sessionConflict: boolean;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -23,6 +25,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  // Adevărat când fila asta tocmai a detectat că sesiunea ei a fost înlocuită
+  // silențios de o autentificare din altă filă/fereastră (vezi mai jos) — folosit
+  // de layout-ul dashboard-ului ca să arate un mesaj explicativ la redirect spre
+  // /login, în loc de o delogare aparent nemotivată.
+  const [sessionConflict, setSessionConflict] = React.useState(false);
   // Crește de fiecare dată când login()/register()/logout() stabilesc
   // explicit o sesiune — folosit ca să detectăm și să ignorăm rezultatul
   // ÎNTÂRZIAT al restaurării de sesiune de mai jos (vezi efectul), dacă
@@ -49,6 +56,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const { accessToken } = await res.json();
           if (sessionVersionRef.current !== versionAtStart) return; // sesiune stabilită între timp — ignoră
+          if (checkAndRecordIdentity(accessToken) === 'mismatch') {
+            // Cookie-ul de refresh (comun pe tot browser-ul) aparține acum altui
+            // cont — autentificat între timp în altă filă/fereastră. Nu prelua
+            // silențios acea sesiune în fila asta. IMPORTANT: NU ștergem
+            // identitatea reținută aici — dacă am șterge-o, o a doua reîncercare
+            // pasivă (ex: altă navigare rapidă) ar vedea "nicio identitate
+            // reținută" și ar accepta greșit sesiunea deturnată ca fiind una nouă,
+            // legitimă. Identitatea originală rămâne, deci orice reîncercare
+            // pasivă ulterioară va continua să detecteze conflictul, până la un
+            // login/register explicit (care suprascrie deliberat).
+            setSessionConflict(true);
+            return;
+          }
           tokenStore.set(accessToken);
           const profile = await apiFetch<AuthUser>('/auth/me');
           if (sessionVersionRef.current !== versionAtStart) return;
@@ -70,11 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(input),
       });
       tokenStore.set(data.accessToken);
+      recordIdentityFromToken(data.accessToken);
       // Șterge orice date rămase în cache de la o sesiune anterioară (alt
       // utilizator, altă companie) — altfel, pentru o clipă (sau până la
       // următorul refetch), UI-ul poate afișa date cache-uite ale
       // fostului utilizator ca fiind ale celui nou-logat.
       queryClient.clear();
+      setSessionConflict(false);
       setUser(data.user);
     },
     [queryClient],
@@ -88,7 +110,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(input),
       });
       tokenStore.set(data.accessToken);
+      recordIdentityFromToken(data.accessToken);
       queryClient.clear();
+      setSessionConflict(false);
       setUser(data.user);
     },
     [queryClient],
@@ -98,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionVersionRef.current += 1;
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     tokenStore.set(null);
+    clearRecordedIdentity();
     setUser(null);
     queryClient.clear();
     router.push('/login');
@@ -109,7 +134,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, refreshProfile }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, sessionConflict, login, register, logout, refreshProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

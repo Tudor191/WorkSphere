@@ -8,17 +8,17 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { cn } from '@/lib/utils';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, sessionConflict } = useAuth();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/login');
+      router.replace(sessionConflict ? '/login?session=replaced' : '/login');
     } else if (!isLoading && user?.mustChangePassword) {
       router.replace('/set-password');
     }
-  }, [isLoading, user, router]);
+  }, [isLoading, user, sessionConflict, router]);
 
   if (isLoading || !user || user.mustChangePassword) {
     return (

@@ -1,4 +1,5 @@
 import { tokenStore } from './token-store';
+import { checkAndRecordIdentity } from './session-identity';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
@@ -38,6 +39,22 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     const refreshed = await rawFetch('/auth/refresh', { method: 'POST' });
     if (refreshed.ok) {
       const { accessToken } = (await refreshed.json()) as { accessToken: string };
+      if (checkAndRecordIdentity(accessToken) === 'mismatch') {
+        // Cookie-ul de refresh (comun pe tot browser-ul) aparține acum altui
+        // cont, autentificat între timp în altă filă/fereastră — fila asta
+        // NU trebuie să preia silențios acea sesiune în timp ce utilizatorul
+        // se uită la pagina curentă. Forțăm o delogare vizibilă în loc. NU
+        // ștergem identitatea reținută — trebuie să rămână acolo ca să
+        // blocheze și orice altă încercare pasivă ulterioară, până la un
+        // login/register explicit.
+        tokenStore.set(null);
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?session=replaced';
+        }
+        throw new ApiError(401, {
+          message: 'Sesiunea a fost înlocuită de o autentificare în altă filă/fereastră a browserului.',
+        });
+      }
       tokenStore.set(accessToken);
       response = await rawFetch(path, options);
     }
