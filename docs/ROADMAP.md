@@ -67,7 +67,15 @@
      proiect). Rămân pentru o felie următoare: membri expliciți de
      proiect (`ProjectMember`), comentarii pe task (`TaskComment`),
      atașamente (`TaskAttachment`) și time-tracking (`TimeEntry`).
-   - **CRM, Inventar, Chat intern**: neîncepute.
+   - **CRM**: ✅ prima felie implementată — Clienți (CRUD) și Lead-uri
+     (panou pe status, `LeadStatus`). Rămân pentru o felie următoare:
+     `PipelineStage` (etape de pipeline configurabile per companie,
+     în loc de enumul fix) și `CrmNote` (notițe pe client/lead).
+   - **Inventar**: ✅ prima felie implementată — Produse (CRUD, SKU unic
+     per companie) și mișcări de stoc (intrare/ieșire, actualizează
+     `stockQuantity` atomic; ștergerea unui produs e blocată cât timp
+     mai are stoc).
+   - **Chat intern**: neînceput.
 6. **Suită de teste completă (80% coverage)** — construită incremental pe
    măsură ce fiecare modul e implementat, nu retroactiv.
 7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
