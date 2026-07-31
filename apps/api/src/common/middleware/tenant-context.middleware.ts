@@ -2,7 +2,13 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { NextFunction, Request, Response } from 'express';
 import { TenantContext } from '../tenant/tenant-context';
-import { JwtAccessPayload } from '../../auth/types/jwt-payload.type';
+import { JwtAccessPayload, PlatformAdminJwtPayload } from '../../auth/types/jwt-payload.type';
+
+function isPlatformAdminPayload(
+  payload: JwtAccessPayload | PlatformAdminJwtPayload,
+): payload is PlatformAdminJwtPayload {
+  return (payload as PlatformAdminJwtPayload).type === 'platform_admin';
+}
 
 /**
  * Populează `TenantContext` (AsyncLocalStorage) ÎNAINTE de faza de guard-uri
@@ -25,7 +31,13 @@ export class TenantContextMiddleware implements NestMiddleware {
     }
 
     try {
-      const payload = this.jwtService.verify<JwtAccessPayload>(token);
+      const payload = this.jwtService.verify<JwtAccessPayload | PlatformAdminJwtPayload>(token);
+      if (isPlatformAdminPayload(payload)) {
+        // Token de admin de platformă — nu aparține niciunei companii, deci
+        // nu există context de tenant de stabilit. `PlatformAdminGuard`
+        // verifică acest token separat, pe rutele lui proprii.
+        return next();
+      }
       TenantContext.run(
         {
           companyId: payload.companyId,
