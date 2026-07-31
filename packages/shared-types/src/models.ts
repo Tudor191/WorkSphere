@@ -177,3 +177,67 @@ export interface Task {
   createdBy?: SafeUser;
   project?: { id: string; name: string } | null;
 }
+
+export interface Client {
+  id: string;
+  companyId: string;
+  name: string;
+  cui: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  ownerId: string | null;
+  createdAt: string;
+  owner?: SafeUser | null;
+  _count?: { tasks: number; notes: number; projects: number };
+}
+
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+
+export interface Lead {
+  id: string;
+  companyId: string;
+  name: string;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+  status: LeadStatus;
+  valueCents: number | null;
+  ownerId: string | null;
+  pipelineStageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  owner?: SafeUser | null;
+}
+
+export interface Product {
+  id: string;
+  companyId: string;
+  name: string;
+  sku: string;
+  barcode: string | null;
+  qrCode: string | null;
+  category: string | null;
+  unitPriceCents: number;
+  currency: string;
+  unit: string;
+  stockQuantity: string;
+  minStockAlert: string | null;
+  createdAt: string;
+  stockMovements?: StockMovement[];
+}
+
+export type StockMovementType = 'IN' | 'OUT';
+
+export interface StockMovement {
+  id: string;
+  companyId: string;
+  productId: string;
+  type: StockMovementType;
+  quantity: string;
+  reason: string | null;
+  performedById: string;
+  createdAt: string;
+  product?: { id: string; name: string; sku: string; unit: string };
+}

@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Boxes,
   Building2,
   CalendarClock,
   Clock,
+  Contact,
   KanbanSquare,
   LayoutDashboard,
   Settings,
+  Target,
   Users,
 } from 'lucide-react';
 import { Logo } from '@/components/logo';
@@ -20,6 +23,9 @@ const navItems = [
   { href: '/dashboard/employees', label: 'Angajați', icon: Users },
   { href: '/dashboard/departments', label: 'Departamente', icon: Building2 },
   { href: '/dashboard/projects', label: 'Proiecte', icon: KanbanSquare },
+  { href: '/dashboard/clients', label: 'Clienți', icon: Contact },
+  { href: '/dashboard/leads', label: 'Lead-uri', icon: Target },
+  { href: '/dashboard/products', label: 'Produse', icon: Boxes },
   { href: '/dashboard/leave-requests', label: 'Concedii', icon: CalendarClock },
   { href: '/dashboard/attendance', label: 'Pontaj', icon: Clock },
   { href: '/dashboard/settings', label: 'Setări', icon: Settings },

@@ -15,6 +15,10 @@ import { RolesModule } from './roles/roles.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
+import { ClientsModule } from './clients/clients.module';
+import { LeadsModule } from './leads/leads.module';
+import { ProductsModule } from './products/products.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
@@ -38,6 +42,10 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     PlatformAdminModule,
     ProjectsModule,
     TasksModule,
+    ClientsModule,
+    LeadsModule,
+    ProductsModule,
+    StockMovementsModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ValidationPipe },
