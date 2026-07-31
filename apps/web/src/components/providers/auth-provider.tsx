@@ -23,11 +23,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  // Crește de fiecare dată când login()/register()/logout() stabilesc
+  // explicit o sesiune — folosit ca să detectăm și să ignorăm rezultatul
+  // ÎNTÂRZIAT al restaurării de sesiune de mai jos (vezi efectul), dacă
+  // între timp s-a autentificat deja alt cont. Fără asta: dacă utilizatorul
+  // are un cookie de sesiune vechi valid (ex: era logat ca Admin firma A)
+  // și se înregistrează/loghează cu alt cont ÎNAINTE ca `fetch('/auth/refresh')`
+  // de mai jos să se termine, răspunsul întârziat (pentru firma A) poate
+  // sosi ULTIMUL și suprascrie silențios sesiunea nou-stabilită (firma B) —
+  // exact bug-ul reprodus: înregistrare cont nou → ajungi înapoi pe vechea
+  // companie, cu datele ei reale.
+  const sessionVersionRef = React.useRef(0);
 
   React.useEffect(() => {
     // La încărcarea aplicației, încearcă să reînnoiască sesiunea din
     // cookie-ul httpOnly de refresh — dacă există și e valid, utilizatorul
     // rămâne logat fără să reintroducă parola.
+    const versionAtStart = sessionVersionRef.current;
     (async () => {
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api'}/auth/refresh`, {
@@ -36,8 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (res.ok) {
           const { accessToken } = await res.json();
+          if (sessionVersionRef.current !== versionAtStart) return; // sesiune stabilită între timp — ignoră
           tokenStore.set(accessToken);
           const profile = await apiFetch<AuthUser>('/auth/me');
+          if (sessionVersionRef.current !== versionAtStart) return;
           setUser(profile);
         }
       } catch {
@@ -50,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = React.useCallback(
     async (input: LoginInput) => {
+      sessionVersionRef.current += 1;
       const data = await apiFetch<AuthResponse>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -67,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = React.useCallback(
     async (input: RegisterInput) => {
+      sessionVersionRef.current += 1;
       const data = await apiFetch<AuthResponse>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -79,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = React.useCallback(async () => {
+    sessionVersionRef.current += 1;
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     tokenStore.set(null);
     setUser(null);
