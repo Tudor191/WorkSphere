@@ -1,18 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AttendanceRecord } from '@worksphere/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/components/providers/auth-provider';
 
+/** `companyId` în queryKey — vezi comentariul din `use-employees.ts`. */
 export function useMyAttendance() {
+  const { user } = useAuth();
+  const companyId = user?.companyId;
   return useQuery({
-    queryKey: ['attendance', 'mine'],
+    queryKey: ['attendance', 'mine', companyId],
     queryFn: () => apiFetch<AttendanceRecord[]>('/attendance/mine'),
+    enabled: Boolean(companyId),
   });
 }
 
 export function useAllAttendance() {
+  const { user } = useAuth();
+  const companyId = user?.companyId;
   return useQuery({
-    queryKey: ['attendance', 'all'],
+    queryKey: ['attendance', 'all', companyId],
     queryFn: () => apiFetch<AttendanceRecord[]>('/attendance'),
+    enabled: Boolean(companyId),
   });
 }
 

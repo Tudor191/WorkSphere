@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Employee } from '@worksphere/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/components/providers/auth-provider';
 
 export interface CreateEmployeeInput {
   email: string;
@@ -14,10 +15,22 @@ export interface CreateEmployeeInput {
   annualLeaveDays?: number;
 }
 
+/**
+ * `companyId` face parte din queryKey ca strat suplimentar de izolare —
+ * `queryClient.clear()` la login/logout (vezi `auth-provider.tsx`) acoperă
+ * schimbarea de cont în cazul normal, dar un query key comun tuturor
+ * companiilor tot lasă loc unei clipe de date greșite dacă o cerere veche,
+ * pornită sub o altă sesiune, se rezolvă mai târziu decât ar trebui. Cu
+ * `companyId` în cheie, un asemenea răspuns întârziat ar scrie sub cu totul
+ * altă cheie de cache, nu peste datele companiei curente.
+ */
 export function useEmployees() {
+  const { user } = useAuth();
+  const companyId = user?.companyId;
   return useQuery({
-    queryKey: ['employees'],
+    queryKey: ['employees', companyId],
     queryFn: () => apiFetch<Employee[]>('/employees'),
+    enabled: Boolean(companyId),
   });
 }
 
