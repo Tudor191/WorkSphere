@@ -72,10 +72,20 @@
    nefăcută încă — plus rate limiting pe tokeni per companie
    (`SubscriptionPlan.aiCreditsPerMonth` există în schemă, dar nu e încă
    aplicat).
-2. **Stripe billing complet** — checkout, webhook-uri, upgrade/downgrade,
-   facturi. Necesită cont Stripe live/test și decizie asupra prețurilor
-   planurilor. Schema (`SubscriptionPlan`, `Subscription`, `Invoice`) e
-   gata.
+2. **Stripe billing** — ✅ prima felie implementată, cont Stripe personal
+   în test mode (decizie temporară — trece pe cont de firmă odată ce
+   firma e înregistrată legal și beta e mai avansat). `POST
+   /billing/checkout` (Stripe Checkout găzduit), `POST /billing/portal`
+   (Stripe Billing Portal găzduit — plată/anulare), `POST /billing/webhook`
+   (sincronizează status/perioadă/plan + facturi din evenimente Stripe).
+   Are nevoie de `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` în mediul
+   API-ului (fără ele, 503 clar, nu crash) și de rularea o singură dată a
+   `pnpm --filter @worksphere/database setup-stripe-plans` (creează
+   Product/Price în Stripe pentru planurile `basic`/`pro` și salvează
+   ID-urile în DB). Rămâne pentru o felie următoare: rate limiting pe
+   tokeni AI legat de plan (`aiCreditsPerMonth`), facturare anuală
+   promovată explicit în UI (backend-ul o suportă deja prin
+   `billingCycle`).
 3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
    (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
 4. **Firebase Cloud Messaging** — necesită proiect Firebase.

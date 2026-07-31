@@ -426,6 +426,28 @@ departament poate fi golit angajat cu angajat și apoi șters cu `DELETE
 
 ---
 
+## 18. Schimbarea de plan permitea upgrade gratuit, fără nicio plată, odată ce Stripe a fost adăugat
+
+**Context:** găsit chiar în timpul implementării billing-ului Stripe, nu
+raportat separat de user — `PATCH /companies/me/subscription` (folosit de
+pagina de setări cont) atribuia orice plan direct, fără procesare de
+plată. Asta era corect și intenționat CÂT TIMP Stripe nu exista deloc
+(comentariul din cod spunea explicit asta) — dar odată ce
+`POST /billing/checkout` a devenit calea reală de plată, același endpoint
+vechi rămânea deschis ca o cale de upgrade la orice plan plătit, complet
+gratuit, ocolind Stripe în totalitate.
+
+**Cauză:** `CompaniesService.updateSubscription()` nu avea nicio verificare
+asupra prețului planului cerut — accepta orice `planSlug` valid.
+
+**Soluție:** endpoint-ul respinge acum explicit (403) orice plan cu
+`priceMonthlyCents > 0`, îndrumând către `POST /billing/checkout`. Rămâne
+funcțional doar pentru downgrade la planul gratuit (`trial`).
+
+**Status:** ✅ Rezolvat (aplicat) — `6071ba1`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -448,3 +470,7 @@ departament poate fi golit angajat cu angajat și apoi șters cu `DELETE
    butonul. Merită verificat explicit, la fiecare modul nou, că fiecare
    endpoint de mutație (`POST`/`PATCH`/`DELETE`) chiar are un loc din care
    poate fi declanșat din interfață.
+6. **La adăugarea unei plăți reale (Stripe), verifică ce cale "de test,
+   fără plată" exista înainte** (#18) — un shortcut care era corect cât
+   timp nu exista billing real devine o gaură de monetizare în momentul
+   în care apare o cale de plată reală în paralel cu el.
