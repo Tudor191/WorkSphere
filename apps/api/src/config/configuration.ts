@@ -14,6 +14,10 @@ export interface AppConfig {
   };
   redisUrl: string;
   databaseUrl: string;
+  openai: {
+    apiKey: string;
+    model: string;
+  };
 }
 
 export default (): { app: AppConfig } => ({
@@ -38,5 +42,11 @@ export default (): { app: AppConfig } => ({
     },
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     databaseUrl: process.env.DATABASE_URL ?? '',
+    openai: {
+      // Necompletat = AI Assistant dezactivat (vezi AiService) — pornirea
+      // aplicației nu trebuie să depindă de existența acestei chei.
+      apiKey: process.env.OPENAI_API_KEY ?? '',
+      model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+    },
   },
 });

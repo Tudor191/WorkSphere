@@ -20,6 +20,7 @@ import { LeadsModule } from './leads/leads.module';
 import { ProductsModule } from './products/products.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { ChatModule } from './chat/chat.module';
+import { AiModule } from './ai/ai.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
@@ -48,6 +49,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     ProductsModule,
     StockMovementsModule,
     ChatModule,
+    AiModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ValidationPipe },
