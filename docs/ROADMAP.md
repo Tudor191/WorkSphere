@@ -49,13 +49,16 @@
 
 ## Ce urmează (nu a fost implementat fals — necesită decizii de business)
 
-1. **AI Assistant + RAG** — necesită cheie OpenAI API activă și decizie
-   despre costuri (per-companie rate limiting pe tokeni). Schema DB are
-   deja tabelele `Document`, `DocumentChunk`, `Embedding` pregătite
-   (pgvector). Implementare recomandată: `pgvector` în Postgres (evită un
-   vector DB separat — Pinecone/Weaviate — inutil la scara inițială),
-   chunking + embeddings la upload document, retrieval + prompt injection
-   controlat în system prompt cu date reale ale companiei curente.
+1. **AI Assistant + RAG** — ✅ prima felie implementată: `POST /ai/chat`,
+   asistent conversațional simplu (fără persistență server-side a
+   conversației, fără RAG încă). Are nevoie de `OPENAI_API_KEY` setat în
+   mediul API-ului ca să răspundă efectiv (fără el, întoarce clar 503, nu
+   crapă). Rămâne pentru o felie următoare: RAG-ul propriu-zis peste
+   documente (`Document`/`DocumentChunk`/`DocumentEmbedding`, pgvector) —
+   are nevoie întâi de o decizie asupra stocării fișierelor (S3/MinIO/
+   disc local), nefăcută încă — plus rate limiting pe tokeni per companie
+   (`SubscriptionPlan.aiCreditsPerMonth` există în schemă, dar nu e încă
+   aplicat).
 2. **Stripe billing complet** — checkout, webhook-uri, upgrade/downgrade,
    facturi. Necesită cont Stripe live/test și decizie asupra prețurilor
    planurilor. Schema (`SubscriptionPlan`, `Subscription`, `Invoice`) e
