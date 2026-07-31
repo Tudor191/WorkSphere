@@ -28,7 +28,9 @@
 - Audit log: interceptor global care înregistrează automat mutațiile.
 - Module CRUD complete: `companies`, `employees`, `departments`, `roles`
   (listare, pentru atribuire), `leave-requests` (cu calcul zile disponibile),
-  `attendance` (check-in/check-out + calcul ore suplimentare).
+  `attendance` (check-in/check-out + calcul ore suplimentare), `projects` +
+  `tasks`, `clients` + `leads`, `products` + `stock-movements`, `chat`
+  (canale + mesaje).
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -42,7 +44,8 @@
 - Autentificare: login, register, onboarding companie.
 - Dashboard: sidebar + header + dark/light mode, pagini conectate real la
   API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
-  statistici reale din DB.
+  statistici reale din DB, plus Proiecte, Clienți, Lead-uri, Produse și
+  Chat.
 
 ## Ce urmează (nu a fost implementat fals — necesită decizii de business)
 
@@ -75,7 +78,12 @@
      per companie) și mișcări de stoc (intrare/ieșire, actualizează
      `stockQuantity` atomic; ștergerea unui produs e blocată cât timp
      mai are stoc).
-   - **Chat intern**: neînceput.
+   - **Chat intern**: ✅ prima felie implementată — canale publice/private
+     cu membri expliciți, mesaje. Livrarea e prin polling (4s), nu
+     WebSocket — real-time propriu-zis rămâne pentru o felie următoare.
+
+   Cu asta, toate cele patru module din acest punct au o primă felie
+   funcțională; ce rămâne pe fiecare e listat mai sus, individual.
 6. **Suită de teste completă (80% coverage)** — construită incremental pe
    măsură ce fiecare modul e implementat, nu retroactiv.
 7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
