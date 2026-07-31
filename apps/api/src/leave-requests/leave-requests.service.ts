@@ -28,6 +28,7 @@ export class LeaveRequestsService {
 
   findAll() {
     return this.prisma.tenantScoped.leaveRequest.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: {
         employee: { include: { user: { select: SAFE_USER_SELECT } } },
         leaveType: true,
@@ -40,7 +41,7 @@ export class LeaveRequestsService {
   /** Pentru badge-ul de notificare din sidebar, vizibil doar celor care pot aproba. */
   async countPending() {
     const count = await this.prisma.tenantScoped.leaveRequest.count({
-      where: { status: 'PENDING' },
+      where: { companyId: TenantContext.requireCompanyId(), status: 'PENDING' },
     });
     return { count };
   }
@@ -56,7 +57,11 @@ export class LeaveRequestsService {
 
   async getBalances(employeeId: string) {
     return this.prisma.tenantScoped.leaveBalance.findMany({
-      where: { employeeId, year: new Date().getFullYear() },
+      where: {
+        companyId: TenantContext.requireCompanyId(),
+        employeeId,
+        year: new Date().getFullYear(),
+      },
       include: { leaveType: true },
     });
   }
@@ -74,7 +79,10 @@ export class LeaveRequestsService {
    * cerere de concediu, pentru că soldul se creează abia la aprobare.
    */
   getLeaveTypes() {
-    return this.prisma.tenantScoped.leaveType.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.tenantScoped.leaveType.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async create(dto: CreateLeaveRequestDto) {

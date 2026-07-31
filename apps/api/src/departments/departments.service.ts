@@ -10,6 +10,7 @@ export class DepartmentsService {
 
   findAll() {
     return this.prisma.tenantScoped.department.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: { _count: { select: { employees: true, subDepartments: true } } },
       orderBy: { name: 'asc' },
     });

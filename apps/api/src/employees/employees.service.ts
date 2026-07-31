@@ -21,6 +21,7 @@ export class EmployeesService {
 
   findAll() {
     return this.prisma.tenantScoped.employee.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: { user: { select: SAFE_USER_SELECT }, department: true },
       orderBy: { employeeCode: 'asc' },
     });
