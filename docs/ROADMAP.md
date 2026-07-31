@@ -61,9 +61,13 @@
    (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
 4. **Firebase Cloud Messaging** — necesită proiect Firebase.
 5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
-   toate; API + UI urmează după ce fundația (auth/RBAC/multi-tenancy) e
-   validată în producție, ca să nu se repete pattern-uri greșite în 10+
-   module.
+   toate.
+   - **Proiecte**: ✅ prima felie implementată — API complet (Projects +
+     Tasks) și UI (listă proiecte, panou pe 4 coloane de status per
+     proiect). Rămân pentru o felie următoare: membri expliciți de
+     proiect (`ProjectMember`), comentarii pe task (`TaskComment`),
+     atașamente (`TaskAttachment`) și time-tracking (`TimeEntry`).
+   - **CRM, Inventar, Chat intern**: neîncepute.
 6. **Suită de teste completă (80% coverage)** — construită incremental pe
    măsură ce fiecare modul e implementat, nu retroactiv.
 7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
