@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useChangePassword, useUpdateProfile } from '@/hooks/use-account';
-import { useSubscription, useUpdateSubscription } from '@/hooks/use-subscription';
+import { useCreateCheckout, useCreatePortal, useSubscription, useUpdateSubscription } from '@/hooks/use-subscription';
 import { ApiError } from '@/lib/api-client';
 
 function centsToRon(cents: number) {
@@ -26,6 +26,9 @@ export default function AccountSettingsPage() {
   } = useSubscription();
   const canManageBilling = !(subscriptionQueryError instanceof ApiError && subscriptionQueryError.status === 403);
   const updateSubscription = useUpdateSubscription();
+  const createCheckout = useCreateCheckout();
+  const createPortal = useCreatePortal();
+  const [portalError, setPortalError] = React.useState<string | null>(null);
 
   const [profileForm, setProfileForm] = React.useState({ firstName: '', lastName: '', email: '' });
   const [profileMessage, setProfileMessage] = React.useState<string | null>(null);
@@ -81,15 +84,30 @@ export default function AccountSettingsPage() {
     }
   };
 
-  const onSelectPlan = async (planSlug: string) => {
+  const onSelectPlan = async (planSlug: string, isPaid: boolean) => {
     setPlanError(null);
     setPendingPlanSlug(planSlug);
     try {
+      if (isPaid) {
+        const { url } = await createCheckout.mutateAsync({ planSlug });
+        window.location.href = url;
+        return;
+      }
       await updateSubscription.mutateAsync(planSlug);
     } catch (err) {
       setPlanError(err instanceof ApiError ? err.message : 'Eroare la schimbarea planului.');
     } finally {
       setPendingPlanSlug(null);
+    }
+  };
+
+  const onManageBilling = async () => {
+    setPortalError(null);
+    try {
+      const { url } = await createPortal.mutateAsync();
+      window.location.href = url;
+    } catch (err) {
+      setPortalError(err instanceof ApiError ? err.message : 'Eroare la deschiderea portalului de facturare.');
     }
   };
 
@@ -214,13 +232,16 @@ export default function AccountSettingsPage() {
             </p>
           )}
 
-          {canManageBilling && planError && <p className="text-sm text-destructive">{planError}</p>}
+          {canManageBilling && (planError || portalError) && (
+            <p className="text-sm text-destructive">{planError || portalError}</p>
+          )}
 
           {canManageBilling && (
             <>
               <div className="grid gap-4 sm:grid-cols-3">
                 {subscriptionData?.plans.map((plan) => {
                   const isCurrent = subscriptionData.subscription?.plan.slug === plan.slug;
+                  const isPaid = plan.priceMonthlyCents > 0;
                   return (
                     <div key={plan.id} className="rounded-lg border border-border p-4">
                       <p className="font-medium">{plan.name}</p>
@@ -232,18 +253,30 @@ export default function AccountSettingsPage() {
                         className="mt-3 w-full"
                         variant={isCurrent ? 'secondary' : 'outline'}
                         disabled={isCurrent || pendingPlanSlug === plan.slug}
-                        onClick={() => onSelectPlan(plan.slug)}
+                        onClick={() => onSelectPlan(plan.slug, isPaid)}
                       >
-                        {isCurrent ? 'Plan activ' : pendingPlanSlug === plan.slug ? 'Se schimbă...' : 'Alege planul'}
+                        {isCurrent
+                          ? 'Plan activ'
+                          : pendingPlanSlug === plan.slug
+                            ? 'Se redirecționează...'
+                            : isPaid
+                              ? 'Abonează-te (Stripe)'
+                              : 'Alege planul'}
                       </Button>
                     </div>
                   );
                 })}
               </div>
 
+              {subscriptionData?.subscription?.stripeCustomerId && (
+                <Button variant="outline" onClick={onManageBilling} disabled={createPortal.isPending}>
+                  {createPortal.isPending ? 'Se deschide...' : 'Gestionează facturarea'}
+                </Button>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                Schimbarea planului e instantă, fără procesare de plată — facturarea Stripe reală
-                urmează (vezi roadmap).
+                Planurile plătite se activează printr-o sesiune Stripe Checkout — vei fi
+                redirecționat pe pagina securizată de plată a Stripe.
               </p>
             </>
           )}

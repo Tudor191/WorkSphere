@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -54,13 +54,6 @@ export class CompaniesService {
     return { deletedRecords };
   }
 
-  /**
-   * Vezi `docs/ROADMAP.md` — facturarea Stripe reală (checkout, webhook-uri)
-   * nu e încă implementată. Până atunci, schimbarea planului actualizează
-   * direct abonamentul intern, fără procesare de plată — suficient pentru
-   * a testa fluxurile care depind de plan (ex: `maxEmployees`), nu pentru
-   * producție.
-   */
   async getSubscription() {
     const companyId = TenantContext.requireCompanyId();
     const [subscription, plans] = await Promise.all([
@@ -80,6 +73,16 @@ export class CompaniesService {
     const companyId = TenantContext.requireCompanyId();
     const plan = await this.prisma.subscriptionPlan.findUnique({ where: { slug: dto.planSlug } });
     if (!plan) throw new NotFoundException('Plan inexistent.');
+    // De când există `BillingService` (checkout Stripe real), acest endpoint
+    // nu mai are voie să atribuie direct un plan PLĂTIT — ar însemna upgrade
+    // gratuit, fără nicio plată. Rămâne util doar pentru downgrade la planul
+    // gratuit (`trial`); orice plan cu preț trece obligatoriu prin
+    // `POST /billing/checkout`.
+    if (plan.priceMonthlyCents > 0) {
+      throw new ForbiddenException(
+        'Planurile plătite se activează prin checkout (POST /billing/checkout), nu direct.',
+      );
+    }
 
     return this.prisma.tenantScoped.subscription.update({
       where: { companyId },

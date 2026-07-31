@@ -19,6 +19,7 @@ export function useSubscription() {
   });
 }
 
+/** Doar pentru downgrade la planul gratuit — planurile plătite trec prin `useCreateCheckout`. */
 export function useUpdateSubscription() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -28,5 +29,23 @@ export function useUpdateSubscription() {
         body: JSON.stringify({ planSlug }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['subscription'] }),
+  });
+}
+
+/** Întoarce un URL Stripe Checkout — apelantul face `window.location.href = url`. */
+export function useCreateCheckout() {
+  return useMutation({
+    mutationFn: (input: { planSlug: string; billingCycle?: 'MONTHLY' | 'YEARLY' }) =>
+      apiFetch<{ url: string }>('/billing/checkout', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  });
+}
+
+/** Întoarce un URL Stripe Billing Portal (gestionare plată/anulare) — la fel, redirect manual. */
+export function useCreatePortal() {
+  return useMutation({
+    mutationFn: () => apiFetch<{ url: string }>('/billing/portal', { method: 'POST' }),
   });
 }

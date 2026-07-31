@@ -137,6 +137,7 @@ export interface Subscription {
   planId: string;
   status: SubscriptionStatus;
   billingCycle: BillingCycle;
+  stripeCustomerId: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;

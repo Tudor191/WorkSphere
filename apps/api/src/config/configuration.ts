@@ -18,6 +18,11 @@ export interface AppConfig {
     apiKey: string;
     model: string;
   };
+  stripe: {
+    secretKey: string;
+    webhookSecret: string;
+  };
+  frontendUrl: string;
 }
 
 export default (): { app: AppConfig } => ({
@@ -48,5 +53,12 @@ export default (): { app: AppConfig } => ({
       apiKey: process.env.OPENAI_API_KEY ?? '',
       model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
     },
+    stripe: {
+      // Necompletat = billing dezactivat (vezi BillingService) — la fel ca
+      // la OpenAI, pornirea aplicației nu trebuie să depindă de asta.
+      secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    },
+    frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   },
 });
