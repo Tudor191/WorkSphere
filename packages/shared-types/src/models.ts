@@ -241,3 +241,22 @@ export interface StockMovement {
   createdAt: string;
   product?: { id: string; name: string; sku: string; unit: string };
 }
+
+export interface ChatChannel {
+  id: string;
+  companyId: string;
+  name: string;
+  isPrivate: boolean;
+  createdAt: string;
+  _count?: { messages: number; members: number };
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  authorId: string;
+  content: string;
+  editedAt: string | null;
+  createdAt: string;
+  author: SafeUser;
+}
