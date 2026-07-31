@@ -142,3 +142,38 @@ export interface Subscription {
   cancelAtPeriodEnd: boolean;
   plan: SubscriptionPlan;
 }
+
+export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELED';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface Project {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  startDate: string | null;
+  deadline: string | null;
+  createdAt: string;
+  _count?: { tasks: number };
+  tasks?: Task[];
+}
+
+export interface Task {
+  id: string;
+  companyId: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigneeId: string | null;
+  createdById: string;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: SafeUser | null;
+  createdBy?: SafeUser;
+  project?: { id: string; name: string } | null;
+}

@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, CalendarClock, Clock, LayoutDashboard, Settings, Users } from 'lucide-react';
+import {
+  Building2,
+  CalendarClock,
+  Clock,
+  KanbanSquare,
+  LayoutDashboard,
+  Settings,
+  Users,
+} from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { usePendingLeaveRequestsCount } from '@/hooks/use-leave-requests';
 import { cn } from '@/lib/utils';
@@ -11,6 +19,7 @@ const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/employees', label: 'Angajați', icon: Users },
   { href: '/dashboard/departments', label: 'Departamente', icon: Building2 },
+  { href: '/dashboard/projects', label: 'Proiecte', icon: KanbanSquare },
   { href: '/dashboard/leave-requests', label: 'Concedii', icon: CalendarClock },
   { href: '/dashboard/attendance', label: 'Pontaj', icon: Clock },
   { href: '/dashboard/settings', label: 'Setări', icon: Settings },

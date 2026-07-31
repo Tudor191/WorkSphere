@@ -13,6 +13,8 @@ import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { RolesModule } from './roles/roles.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
+import { ProjectsModule } from './projects/projects.module';
+import { TasksModule } from './tasks/tasks.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
@@ -34,6 +36,8 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     AttendanceModule,
     RolesModule,
     PlatformAdminModule,
+    ProjectsModule,
+    TasksModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ValidationPipe },
