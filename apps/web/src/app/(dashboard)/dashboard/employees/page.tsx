@@ -66,7 +66,11 @@ export default function EmployeesPage() {
   const [toHardDelete, setToHardDelete] = React.useState<Employee | null>(null);
   const [hardDeleteError, setHardDeleteError] = React.useState<string | null>(null);
   const [toPromote, setToPromote] = React.useState<Employee | null>(null);
-  const [promoteForm, setPromoteForm] = React.useState({ position: '', roleId: '' });
+  const [promoteForm, setPromoteForm] = React.useState({
+    position: '',
+    roleId: '',
+    departmentId: '',
+  });
   const [promoteError, setPromoteError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({
     email: '',
@@ -126,7 +130,11 @@ export default function EmployeesPage() {
 
   const openPromote = (emp: Employee) => {
     setPromoteError(null);
-    setPromoteForm({ position: emp.position, roleId: emp.user.roleId });
+    setPromoteForm({
+      position: emp.position,
+      roleId: emp.user.roleId,
+      departmentId: emp.departmentId ?? '',
+    });
     setToPromote(emp);
   };
 
@@ -135,7 +143,11 @@ export default function EmployeesPage() {
     if (!toPromote) return;
     setPromoteError(null);
     try {
-      await updateEmployeeRole.mutateAsync({ id: toPromote.id, ...promoteForm });
+      await updateEmployeeRole.mutateAsync({
+        id: toPromote.id,
+        ...promoteForm,
+        departmentId: promoteForm.departmentId || null,
+      });
       setToPromote(null);
     } catch (err) {
       setPromoteError(err instanceof ApiError ? err.message : 'Eroare la actualizarea angajatului.');
@@ -449,6 +461,24 @@ export default function EmployeesPage() {
                   {sortedRoles.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {roleLabelRo(r.systemKey, r.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Departament</Label>
+              <Select
+                value={promoteForm.departmentId}
+                onValueChange={(v) => setPromoteForm((f) => ({ ...f, departmentId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Fără departament" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments?.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

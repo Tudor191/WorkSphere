@@ -67,6 +67,7 @@ export interface PromoteEmployeeInput {
   id: string;
   position: string;
   roleId: string;
+  departmentId?: string | null;
 }
 
 /** Schimbă funcția și/sau rolul unui angajat existent — folosit la promovare. */
