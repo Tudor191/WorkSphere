@@ -397,6 +397,35 @@ silențios.
 
 ---
 
+## 17. Nu exista nicio cale să scoți un angajat dintr-un departament (ca să-l poți șterge)
+
+**Context:** venit direct din #16 — guard-ul de ștergere e corect (nu
+lasă ștergerea unui departament cu angajați), dar userul a întrebat cum
+ar trebui rezolvat: să slăbim guard-ul (ștergere forțată, cu angajații
+scoși automat/silențios), sau să dăm o cale explicită să muți angajații
+afară întâi.
+
+**Decizie:** a doua variantă — slăbirea guard-ului ar însemna că ștergerea
+unui departament devine, pe ascuns, o editare în masă a tuturor angajaților
+lui (fie li se golește departamentul fără ca nimeni să vadă exact cine a
+fost afectat, fie — și mai rău — ar fi șterși și ei). Un guard care poate
+fi ocolit doar editând angajați unul câte unul, explicit, rămâne o plasă
+de siguranță reală.
+
+**Cauză:** select-ul de "Departament" din modalul "Editează rol / funcție"
+(#14) putea comuta doar între departamente existente, niciodată înapoi la
+"niciunul" — Radix Select nu acceptă `value=""` pe un item, deci lipsea
+o sentinelă pentru "fără departament".
+
+**Soluție:** adăugată opțiunea "Fără departament" (sentinelă `__none__`,
+mapată la `null` la submit) în select-ul din modalul de editare. Acum un
+departament poate fi golit angajat cu angajat și apoi șters cu `DELETE
+/departments/:id`, care rămâne neschimbat.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `b4fbbd6`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
