@@ -354,7 +354,7 @@ cale din UI să muți un angajat existent în alt departament fără să-l șter
 **Soluție:** select de "Departament" adăugat în același modal, alături de
 rol și funcție.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `3ed8cb5`
+**Status:** ✅ Rezolvat (confirmat) — `3ed8cb5`
 
 ---
 
@@ -371,7 +371,29 @@ de operare al vizitatorului.
 **Soluție:** `defaultTheme` schimbat în `"light"`. Comutatorul de temă
 rămâne funcțional pentru oricine vrea dark sau vrea să urmeze sistemul.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `3ed8cb5`
+**Status:** ✅ Rezolvat (confirmat) — `3ed8cb5`
+
+---
+
+## 16. Departamentele nu puteau fi editate sau șterse din UI
+
+**Simptom:** odată creat un departament greșit (nume introdus greșit, sau
+pur și simplu nu mai era nevoie de el), nu exista nicio cale din interfață
+să fie editat sau șters.
+
+**Cauză:** exact tiparul de la #14/`1bb2afa` — `DELETE /departments/:id` și
+`PATCH /departments/:id` existau deja pe backend (`remove()` refuză deja
+corect ștergerea dacă departamentul are angajați sau sub-departamente),
+dar pagina de Departamente (`apps/web/src/app/(dashboard)/dashboard/departments/page.tsx`)
+nu avea deloc butoane de editare/ștergere — doar listă + creare.
+
+**Soluție:** adăugate `useUpdateDepartment`/`useDeleteDepartment` în
+`use-departments.ts` și butoane editare (creion) / ștergere (coș) pe
+fiecare card, cu dialog de confirmare la ștergere care afișează mesajul
+de eroare al backend-ului (ex. "are angajați asociate") în loc să eșueze
+silențios.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `0a1f152`
 
 ---
 
@@ -391,3 +413,9 @@ rămâne funcțional pentru oricine vrea dark sau vrea să urmeze sistemul.
    trebuie lăsat ca instrucțiune manuală într-un comentariu** — exact asta
    a cauzat #12.2; acum e automatizat în
    `docker/postgres/init-app-role.sh`.
+5. **Un endpoint backend gata nu înseamnă că UI-ul chiar îl expune** — s-a
+   repetat de două ori (#14 angajați → `1bb2afa`, #16 departamente →
+   `0a1f152`): CRUD-ul complet exista pe server, dar pagina nu avea
+   butonul. Merită verificat explicit, la fiecare modul nou, că fiecare
+   endpoint de mutație (`POST`/`PATCH`/`DELETE`) chiar are un loc din care
+   poate fi declanșat din interfață.
