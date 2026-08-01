@@ -534,7 +534,7 @@ un worker deja activ — la o primă înregistrare, de obicei nu e încă activ
 inclusiv la prima instalare) înainte de a apela `getToken()`, în loc să se
 folosească direct obiectul de înregistrare întors de `register()`.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `35e3c03`
+**Status:** ✅ Rezolvat (confirmat — notificare push reală primită în Windows/Edge) — `35e3c03`
 
 ---
 
@@ -563,7 +563,7 @@ Vizibilitatea butonului nu mai depinde de starea permisiunii, doar de
 config+suport browser — un nou click e mereu sigur (reînregistrarea
 aceluiași token e idempotentă pe server).
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `ee2dc4f`
+**Status:** ✅ Rezolvat (confirmat — notificare push reală primită în Windows/Edge) — `ee2dc4f`
 
 ---
 
@@ -586,7 +586,8 @@ aruncă exact această eroare pe un body gol.
 patru endpoint-uri care nu întorc date, la fel ca restul aplicației
 (ex. `employees.controller.ts`, `remove()`/`hardDelete()`).
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `ee91386`
+**Status:** ✅ Rezolvat (confirmat — notificare push reală primită în Windows/Edge,
+pentru o respingere de cerere de concediu, de la un capăt la altul) — `ee91386`
 
 ---
 

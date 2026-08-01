@@ -90,7 +90,10 @@
    `billingCycle`).
 3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
    (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
-4. **Firebase Cloud Messaging (push)** — ✅ prima felie implementată:
+4. **Firebase Cloud Messaging (push)** — ✅ implementat și **confirmat
+   funcțional** printr-o notificare push reală, primită de la un capăt la
+   altul (respingere cerere de concediu → notificare în aplicație → push
+   FCM → notificare nativă în Windows/Edge, verificat vizual de user).
    `NotificationsModule` (listă, contor necitite, marcare citit,
    înregistrare/dezînregistrare device token) + clopoțel în header cu
    buton "Activează notificările push". Primul declanșator real cablat:
