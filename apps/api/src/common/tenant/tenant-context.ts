@@ -42,18 +42,18 @@ export class TenantContext {
   }
 
   /**
-   * Escape hatch STRICT — folosit doar de cod care trebuie să caute un rând
-   * după un identificator unic global ÎNAINTE să existe vreun context de
-   * tenant cunoscut:
-   *   - `AuthService` (login/register/refresh/Google OAuth): caută un
-   *     `User` după email sau un `RefreshToken` după hash.
-   *   - `BillingService` (webhook Stripe): caută o `Subscription` după
-   *     `stripeCustomerId`/`stripeSubscriptionId` — evenimentul vine de la
-   *     Stripe, fără JWT, deci fără `companyId` cunoscut dinainte.
-   * Interogările permise sub bypass trebuie să rămână "narrow" (egalitate
-   * exactă pe un identificator unic global), niciodată liste filtrate doar
-   * parțial — altfel devine o gaură de izolare reală. Nu extinde lista de
-   * mai sus fără același raționament.
+   * Escape hatch STRICT pentru fluxurile de autentificare (login/register/
+   * refresh/Google OAuth), care trebuie să caute un `User` după email sau
+   * un `RefreshToken` după hash înainte să existe orice context de tenant
+   * (asta e literalmente ce stabilesc). Interogările permise sub bypass
+   * trebuie să rămână "narrow" (egalitate exactă pe email/hash unic
+   * global), niciodată liste filtrate doar parțial — altfel devine o gaură
+   * de izolare reală. Nu folosi în afara `AuthService`.
+   *
+   * `BillingService` (webhook Stripe — nici un JWT, deci fără `companyId`
+   * cunoscut dinainte) are aceeași nevoie, dar propriul lui escape hatch
+   * (`runBypassingRls`, independent de `AsyncLocalStorage`) — vezi
+   * comentariul de-acolo pentru motiv.
    */
   static runAsBypass<T>(callback: () => T): T {
     return this.storage.run(
