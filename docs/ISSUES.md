@@ -538,6 +538,35 @@ folosească direct obiectul de înregistrare întors de `register()`.
 
 ---
 
+## 22. Butonul "Activează notificările push" nu făcea nimic vizibil / dispărea fără să fi funcționat
+
+**Simptom raportat:** click pe buton — nimic vizibil (niciun popup de
+permisiune, nicio cerere către Firebase în Network). Activând manual
+permisiunea din setările browserului și reîncărcând, clopoțelul arăta ca
+și cum notificările ar fi active, deși niciun token nu fusese vreodată
+înregistrat pe server.
+
+**Cauze (două, ambele în cod client):**
+1. `requestPushToken()` întorcea `null` — tăcut, fără nicio diferență —
+   pentru orice eșec: config Firebase incomplet (ex. lipsă VAPID key),
+   browser nesuportat, SAU refuzul userului. Un `.env` incomplet arăta
+   identic cu "nu s-a întâmplat nimic".
+2. Butonul era ascuns pe baza `Notification.permission === 'granted'` —
+   dar permisiunea browserului acordată nu înseamnă că s-a obținut
+   vreodată efectiv un token FCM (poate eșua independent). Odată
+   permisiunea acordată dintr-o încercare anterioară eșuată, butonul
+   dispărea definitiv, fără nicio cale de reîncercare.
+
+**Soluție:** doar refuzul explicit de permisiune mai întoarce `null` —
+orice altă condiție aruncă o eroare specifică, afișată direct sub buton.
+Vizibilitatea butonului nu mai depinde de starea permisiunii, doar de
+config+suport browser — un nou click e mereu sigur (reînregistrarea
+aceluiași token e idempotentă pe server).
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `ee2dc4f`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
