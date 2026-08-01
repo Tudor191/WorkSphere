@@ -393,7 +393,7 @@ fiecare card, cu dialog de confirmare la ștergere care afișează mesajul
 de eroare al backend-ului (ex. "are angajați asociate") în loc să eșueze
 silențios.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `0a1f152`
+**Status:** ✅ Rezolvat (confirmat) — `0a1f152`
 
 ---
 
@@ -422,7 +422,7 @@ mapată la `null` la submit) în select-ul din modalul de editare. Acum un
 departament poate fi golit angajat cu angajat și apoi șters cu `DELETE
 /departments/:id`, care rămâne neschimbat.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `b4fbbd6`
+**Status:** ✅ Rezolvat (confirmat) — `b4fbbd6`
 
 ---
 
@@ -459,30 +459,33 @@ vizibilă după ce s-a întors din Stripe.
 → `[500]` — exact evenimentul care ar fi trebuit să actualizeze
 abonamentul.
 
-**Cauze găsite (două, în același fișier):**
+**Prima rundă de cauze găsite (reale, dar nu cauza finală):**
 1. `resolveCompanyId` (fallback după `stripeCustomerId`) și ambele
    interogări din `onInvoiceEvent` foloseau clientul Prisma brut
    (`this.prisma.subscription`/`this.prisma.invoice`) în loc de
    `this.prisma.tenantScoped...` — bypass complet al contextului de
-   tenant, nu doar al flag-ului de RLS bypass. Un `SELECT` brut sub RLS
-   fail-closed întoarce tăcut zero rânduri (de-asta `invoice.paid` tot
-   întorcea 200 — pur și simplu nu găsea și nu făcea nimic), dar un
-   `INSERT` brut ar lovi clauza `WITH CHECK` și ar arunca eroare reală. Nu
-   a fost declanșatorul exact în acest caz (`checkout.session.completed`
-   rezolvă `companyId` din metadata subscription-ului, fără să ajungă la
-   acest fallback), dar e aceeași clasă de bug ca #12.2.
-2. `current_period_start`/`current_period_end` erau citite doar de pe
-   `SubscriptionItem` (versiuni API Stripe mai noi) — dacă versiunea
-   implicită de API a contului Stripe folosit e mai veche, câmpurile
-   lipsesc de-acolo, producând `new Date(NaN)` ("Invalid Date"), pe care
-   Prisma îl respinge la scriere.
+   tenant, nu doar al flag-ului de RLS bypass. Aceeași clasă de bug ca
+   #12.2 — reparat, dar nu era declanșatorul exact aici.
+2. `current_period_start`/`current_period_end` citite doar de pe
+   `SubscriptionItem` — puteau produce `new Date(NaN)` pe versiuni API
+   Stripe mai vechi. Reparat cu un helper `toSafeDate()`, tot nu era
+   cauza reală a acestui 500 specific (`0529357`).
 
-**Soluție:** toate interogările din `BillingService` folosesc acum
-`tenantScoped`; citirea perioadei verifică ambele locuri posibile
-(item + nivelul vechi de subscription), iar un helper `toSafeDate()`
-respinge explicit orice dată invalidă în loc s-o lase să ajungă la Prisma.
+**Cauza reală** (găsită abia din stack trace-ul complet, cerut explicit de
+la user): `subscription.update({ where: { companyId } })` folosește
+`update()`, care aruncă `P2025` ("no record found for an update") dacă 0
+rânduri se potrivesc — și în acest caz se potriveau 0, deși rândul chiar
+exista cu `companyId`-ul corect (confirmat direct în Postgres, cu
+superuser). Nici migrațiile RLS, nici datele nu erau problema.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea retestării) — `0529357`
+**Soluție finală:** `TenantContext.runAsBypass()` + `this.prisma.tenantScoped`
+(bazate pe `AsyncLocalStorage`) nu produceau, din motive neclare, efectul
+așteptat pentru acest apel — înlocuite cu un mecanism auto-conținut,
+propriu `BillingService` (`runBypassingRls`): o singură tranzacție Prisma
+interactivă, cu `app.bypass_rls = true` setat manual, explicit, direct pe
+ea — fără AsyncLocalStorage, fără nimic împărțit cu alt cod.
+
+**Status:** ✅ Rezolvat (confirmat — checkout real, plan activat corect) — `414112f`
 
 ---
 
@@ -509,7 +512,7 @@ post-plată.
   nu repete mesajul) + câteva refetch-uri automate în ~6s, ca planul nou
   (actualizat de webhook asincron) să apară fără reîncărcare manuală.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `7784a2c`
+**Status:** ✅ Rezolvat (confirmat — checkout real, de la un capăt la altul) — `7784a2c`
 
 ---
 

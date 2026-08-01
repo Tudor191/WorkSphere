@@ -72,9 +72,11 @@
    nefăcută încă — plus rate limiting pe tokeni per companie
    (`SubscriptionPlan.aiCreditsPerMonth` există în schemă, dar nu e încă
    aplicat).
-2. **Stripe billing** — ✅ prima felie implementată, cont Stripe personal
-   în test mode (decizie temporară — trece pe cont de firmă odată ce
-   firma e înregistrată legal și beta e mai avansat). `POST
+2. **Stripe billing** — ✅ implementat și **confirmat funcțional** printr-un
+   checkout real, de la un capăt la altul (plată test → webhook →
+   activare plan Pro, verificat vizual de user). Cont Stripe personal, în
+   test mode (decizie temporară — trece pe cont de firmă odată ce firma e
+   înregistrată legal și beta e mai avansat). `POST
    /billing/checkout` (Stripe Checkout găzduit), `POST /billing/portal`
    (Stripe Billing Portal găzduit — plată/anulare), `POST /billing/webhook`
    (sincronizează status/perioadă/plan + facturi din evenimente Stripe).
