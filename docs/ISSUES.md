@@ -616,7 +616,7 @@ tokenul vechi e dezînregistrat explicit de pe server înainte de a-l
 înregistra pe cel nou. Curăță atât duplicatele viitoare, cât și pe cele
 deja existente (la primul reload după acest fix).
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`
 
 ---
 
@@ -641,7 +641,7 @@ subarbore cu clasa asta, indiferent de clasa de pe `<html>` — panoul de
 developer rămâne mereu dark, izolat de tema companiei curente, fără
 niciun control expus care s-o poată schimba.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`
 
 ---
 
