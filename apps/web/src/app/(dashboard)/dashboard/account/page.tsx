@@ -1,34 +1,68 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useChangePassword, useUpdateProfile } from '@/hooks/use-account';
+import { useCompany } from '@/hooks/use-company';
 import { useCreateCheckout, useCreatePortal, useSubscription, useUpdateSubscription } from '@/hooks/use-subscription';
 import { ApiError } from '@/lib/api-client';
+import type { SubscriptionPlan } from '@worksphere/shared-types';
 
 function centsToRon(cents: number) {
   return (cents / 100).toLocaleString('ro-RO', { minimumFractionDigits: 0 });
 }
 
 export default function AccountSettingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, refreshProfile } = useAuth();
+  const { data: company } = useCompany();
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
   const {
     data: subscriptionData,
     isLoading: subscriptionLoading,
     error: subscriptionQueryError,
+    refetch: refetchSubscription,
   } = useSubscription();
   const canManageBilling = !(subscriptionQueryError instanceof ApiError && subscriptionQueryError.status === 403);
   const updateSubscription = useUpdateSubscription();
   const createCheckout = useCreateCheckout();
   const createPortal = useCreatePortal();
   const [portalError, setPortalError] = React.useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = React.useState<'success' | 'canceled' | null>(null);
+  const [planToConfirm, setPlanToConfirm] = React.useState<SubscriptionPlan | null>(null);
+
+  // La întoarcerea din Stripe Checkout (`?checkout=success|canceled`): arată
+  // un mesaj clar pe pagina noastră, apoi curăță URL-ul ca un refresh să nu
+  // repete mesajul. Webhook-ul Stripe actualizează planul asincron, deci mai
+  // dăm câteva refetch-uri la interval scurt, ca planul nou să apară fără
+  // ca userul să trebuiască să reîmprospăteze manual pagina.
+  React.useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success' || checkout === 'canceled') {
+      setCheckoutNotice(checkout);
+      router.replace('/dashboard/account');
+    }
+    if (checkout === 'success') {
+      const timers = [1500, 3500, 6000].map((delay) => setTimeout(() => refetchSubscription(), delay));
+      return () => timers.forEach(clearTimeout);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [profileForm, setProfileForm] = React.useState({ firstName: '', lastName: '', email: '' });
   const [profileMessage, setProfileMessage] = React.useState<string | null>(null);
@@ -84,19 +118,33 @@ export default function AccountSettingsPage() {
     }
   };
 
-  const onSelectPlan = async (planSlug: string, isPaid: boolean) => {
+  const onSelectPlan = async (plan: SubscriptionPlan, isPaid: boolean) => {
     setPlanError(null);
-    setPendingPlanSlug(planSlug);
+    if (isPaid) {
+      // Nu redirecționăm direct — arătăm întâi datele firmei ca userul să
+      // confirme că plătește pentru compania corectă, înainte de Stripe.
+      setPlanToConfirm(plan);
+      return;
+    }
+    setPendingPlanSlug(plan.slug);
     try {
-      if (isPaid) {
-        const { url } = await createCheckout.mutateAsync({ planSlug });
-        window.location.href = url;
-        return;
-      }
-      await updateSubscription.mutateAsync(planSlug);
+      await updateSubscription.mutateAsync(plan.slug);
     } catch (err) {
       setPlanError(err instanceof ApiError ? err.message : 'Eroare la schimbarea planului.');
     } finally {
+      setPendingPlanSlug(null);
+    }
+  };
+
+  const confirmCheckout = async () => {
+    if (!planToConfirm) return;
+    setPlanError(null);
+    setPendingPlanSlug(planToConfirm.slug);
+    try {
+      const { url } = await createCheckout.mutateAsync({ planSlug: planToConfirm.slug });
+      window.location.href = url;
+    } catch (err) {
+      setPlanError(err instanceof ApiError ? err.message : 'Eroare la inițierea plății.');
       setPendingPlanSlug(null);
     }
   };
@@ -213,6 +261,18 @@ export default function AccountSettingsPage() {
           <CardTitle>Abonament</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {checkoutNotice === 'success' && (
+            <p className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+              Plată reușită! Abonamentul se activează în câteva secunde — pagina se actualizează
+              automat.
+            </p>
+          )}
+          {checkoutNotice === 'canceled' && (
+            <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+              Ai anulat procesul de plată — planul tău a rămas neschimbat. Poți relua oricând.
+            </p>
+          )}
+
           {!canManageBilling && (
             <p className="text-sm text-muted-foreground">
               Nu ai permisiunea de a vedea sau schimba abonamentul companiei — contactează un
@@ -253,14 +313,14 @@ export default function AccountSettingsPage() {
                         className="mt-3 w-full"
                         variant={isCurrent ? 'secondary' : 'outline'}
                         disabled={isCurrent || pendingPlanSlug === plan.slug}
-                        onClick={() => onSelectPlan(plan.slug, isPaid)}
+                        onClick={() => onSelectPlan(plan, isPaid)}
                       >
                         {isCurrent
                           ? 'Plan activ'
                           : pendingPlanSlug === plan.slug
                             ? 'Se redirecționează...'
                             : isPaid
-                              ? 'Abonează-te (Stripe)'
+                              ? 'Abonează-te'
                               : 'Alege planul'}
                       </Button>
                     </div>
@@ -275,13 +335,50 @@ export default function AccountSettingsPage() {
               )}
 
               <p className="text-xs text-muted-foreground">
-                Planurile plătite se activează printr-o sesiune Stripe Checkout — vei fi
-                redirecționat pe pagina securizată de plată a Stripe.
+                Planurile plătite se confirmă aici, apoi plata se face pe pagina securizată a
+                Stripe.
               </p>
             </>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!planToConfirm} onOpenChange={(v) => !v && setPlanToConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmă abonarea</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Firma care va fi abonată</p>
+              <p className="font-medium">{company?.name}</p>
+              {company?.cui && <p className="text-xs text-muted-foreground">CUI: {company.cui}</p>}
+              {company?.email && <p className="text-xs text-muted-foreground">{company.email}</p>}
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Plan ales</p>
+              <p className="font-medium">{planToConfirm?.name}</p>
+              {planToConfirm && (
+                <p className="text-xs text-muted-foreground">
+                  {centsToRon(planToConfirm.priceMonthlyCents)} {planToConfirm.currency}/lună
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              La pasul următor vei fi redirecționat pe pagina securizată de plată a Stripe.
+            </p>
+          </div>
+          {planError && <p className="text-sm text-destructive">{planError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPlanToConfirm(null)}>
+              Anulează
+            </Button>
+            <Button onClick={confirmCheckout} disabled={createCheckout.isPending}>
+              {createCheckout.isPending ? 'Se redirecționează...' : 'Continuă spre plată'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

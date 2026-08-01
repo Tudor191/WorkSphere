@@ -92,8 +92,10 @@ export class BillingService {
       mode: 'subscription',
       customer: stripeCustomerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${this.frontendUrl}/dashboard/settings?checkout=success`,
-      cancel_url: `${this.frontendUrl}/dashboard/settings?checkout=canceled`,
+      // /dashboard/account, NU /dashboard/settings (aceea e "Setări companie",
+      // o pagină diferită) — acolo trăiește selectorul de plan.
+      success_url: `${this.frontendUrl}/dashboard/account?checkout=success`,
+      cancel_url: `${this.frontendUrl}/dashboard/account?checkout=canceled`,
       // Redundant față de `stripeCustomerId` (deja unic per companie), dar
       // webhook-ul îl citește ca a doua sursă de adevăr — vezi
       // `resolveCompanyId` mai jos.
@@ -121,7 +123,7 @@ export class BillingService {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
-      return_url: `${this.frontendUrl}/dashboard/settings`,
+      return_url: `${this.frontendUrl}/dashboard/account`,
     });
     return { url: session.url };
   }
