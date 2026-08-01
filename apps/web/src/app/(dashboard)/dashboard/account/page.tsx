@@ -101,7 +101,10 @@ export default function AccountSettingsPage() {
     try {
       await updateProfile.mutateAsync({
         ...profileForm,
-        phone: profileForm.phone.trim() || undefined,
+        // `null` explicit (nu `undefined`) când e gol — `undefined` ar
+        // dispărea din body-ul JSON, iar backend-ul ar interpreta asta ca
+        // "nu schimba telefonul", nu ca "șterge-l" (vezi ISSUES.md).
+        phone: profileForm.phone.trim() || null,
       });
       await refreshProfile();
       setProfileMessage('Profil actualizat.');

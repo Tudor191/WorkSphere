@@ -690,6 +690,33 @@ un plafon personal fix) rămâne neplafonat, la fel ca "Fără plată".
 
 ---
 
+## 27. Numărul de telefon nu putea fi șters din profil odată setat
+
+**Simptom raportat:** userul a pus din greșeală numărul de telefon pe
+contul CEO/Admin în loc de contul unui angajat; la încercarea de a-l
+șterge din profil (câmp gol + Salvează), numărul rămânea neschimbat —
+ajungând să existe același număr salvat pe două conturi diferite.
+
+**Cauză:** la trimitere, frontend-ul transforma un câmp gol în
+`phone: undefined` (`profileForm.phone.trim() || undefined`) — dar
+`JSON.stringify` elimină complet cheile cu valoare `undefined` din
+body-ul cererii. Backend-ul (`AuthService.updateProfile`) tratează un
+`phone` absent din payload ca „nu schimba nimic" (actualizare parțială,
+intenționat, ca la firstName/lastName/email) — deci ștergerea nu ajungea
+niciodată să fie cerută explicit, era indistingibilă de „nu am atins
+câmpul ăsta".
+
+**Soluție:** `null` explicit înseamnă „șterge", spre deosebire de
+`undefined` (`omis din payload`) care înseamnă „lasă neschimbat" — DTO-ul
+(`UpdateProfileDto.phone`) și tipul din frontend acceptă acum
+`string | null`, iar frontend-ul trimite `null` (nu `undefined`) când
+câmpul e gol. Backend-ul nu s-a schimbat — logica `dto.phone !== undefined`
+gestiona deja corect distincția, doar valoarea trimisă era greșită.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și

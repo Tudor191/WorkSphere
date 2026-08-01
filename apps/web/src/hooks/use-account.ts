@@ -6,7 +6,8 @@ export interface UpdateProfileInput {
   firstName?: string;
   lastName?: string;
   email?: string;
-  phone?: string;
+  /** `null` explicit șterge numărul salvat — `undefined` (câmp omis) lasă valoarea neschimbată. */
+  phone?: string | null;
 }
 
 export function useUpdateProfile() {

@@ -30,11 +30,13 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     example: '+40712345678',
-    description: 'Format internațional (E.164), necesar pentru SMS (Twilio)',
+    description:
+      'Format internațional (E.164), necesar pentru SMS (Twilio). Trimite `null` explicit ca să ștergi numărul salvat.',
+    nullable: true,
   })
   @IsOptional()
   @IsPhoneNumber(undefined, {
     message: 'Numărul de telefon trebuie să fie în format internațional, ex. +40712345678',
   })
-  phone?: string;
+  phone?: string | null;
 }
