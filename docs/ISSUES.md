@@ -629,7 +629,7 @@ title/body în `data`; `firebase-messaging-sw.js` (background) și
 Cu payload strict `data`, SDK-ul nu mai afișează nimic automat — doar
 handler-ul nostru, o singură dată.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`, `<pending>`
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`, `b1492bd`
 
 ---
 
