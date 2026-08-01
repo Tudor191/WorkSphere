@@ -53,7 +53,13 @@ export async function requestPushToken(): Promise<string | null> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return null;
 
-  const registration = await registerServiceWorker();
+  await registerServiceWorker();
+  // `register()` se rezolvă imediat ce înregistrarea e creată, nu neapărat
+  // după ce worker-ul a devenit activ — `PushManager.subscribe()` (folosit
+  // intern de `getToken`) cere un worker deja activ, altfel aruncă
+  // `AbortError: no active Service Worker`. `serviceWorker.ready` așteaptă
+  // exact tranziția asta, inclusiv la prima instalare.
+  const registration = await navigator.serviceWorker.ready;
   const messaging = getMessaging(getFirebaseApp());
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
   return token || null;
