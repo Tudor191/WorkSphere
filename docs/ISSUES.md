@@ -516,6 +516,28 @@ post-plată.
 
 ---
 
+## 21. Activarea push-ului dădea `AbortError: no active Service Worker`
+
+**Simptom raportat:** click pe "Activează notificările push", userul
+acceptă permisiunea browserului, apoi eroare pe ecran: `AbortError: Failed
+to execute 'subscribe' on 'PushManager': Subscription failed - no active
+Service Worker`.
+
+**Cauză:** `navigator.serviceWorker.register()` se rezolvă imediat ce
+înregistrarea e creată, nu neapărat după ce worker-ul chiar s-a instalat
+și activat. `getToken()` (intern, `PushManager.subscribe()`) are nevoie de
+un worker deja activ — la o primă înregistrare, de obicei nu e încă activ
+în momentul în care `register()` se rezolvă.
+
+**Soluție:** după `register()`, se așteaptă `navigator.serviceWorker.ready`
+(se rezolvă exact când un worker devine activ și preia controlul paginii,
+inclusiv la prima instalare) înainte de a apela `getToken()`, în loc să se
+folosească direct obiectul de înregistrare întors de `register()`.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `35e3c03`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
