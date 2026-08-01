@@ -18,6 +18,13 @@ const STRIPE_STATUS_MAP: Record<string, SubscriptionStatus> = {
   paused: 'CANCELED',
 };
 
+/** Timestamp unix (secunde) → `Date`, sau `undefined` dacă lipsește/e invalid — nu lasă niciodată un "Invalid Date" să ajungă la Prisma. */
+function toSafeDate(unixSeconds: number | null | undefined): Date | undefined {
+  if (unixSeconds == null || Number.isNaN(unixSeconds)) return undefined;
+  const date = new Date(unixSeconds * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -172,14 +179,27 @@ export class BillingService {
       return;
     }
 
-    const priceId = stripeSubscription.items.data[0]?.price.id;
+    const priceId = stripeSubscription.items.data[0]?.price?.id;
     const plan = priceId
       ? await this.prisma.subscriptionPlan.findFirst({
           where: { OR: [{ stripePriceIdMonthly: priceId }, { stripePriceIdYearly: priceId }] },
         })
       : null;
 
+    // Stripe a mutat `current_period_start`/`end` de pe Subscription pe
+    // fiecare SubscriptionItem în versiuni de API mai noi — citim ambele
+    // locuri, ca să funcționeze indiferent de versiunea API a contului
+    // Stripe folosit. `toSafeDate` respinge explicit valori absente/invalide
+    // în loc să lase un "Invalid Date" să ajungă la Prisma (ar arunca la
+    // scriere, exact genul de eroare care apărea ca 500 pe webhook).
     const item = stripeSubscription.items.data[0];
+    const legacyPeriod = stripeSubscription as unknown as {
+      current_period_start?: number;
+      current_period_end?: number;
+    };
+    const periodStartUnix = item?.current_period_start ?? legacyPeriod.current_period_start;
+    const periodEndUnix = item?.current_period_end ?? legacyPeriod.current_period_end;
+
     await TenantContext.runAsBypass(() =>
       this.prisma.tenantScoped.subscription.update({
         where: { companyId },
@@ -187,8 +207,8 @@ export class BillingService {
           stripeSubscriptionId: stripeSubscription.id,
           status: STRIPE_STATUS_MAP[stripeSubscription.status] ?? 'INCOMPLETE',
           ...(plan ? { planId: plan.id } : {}),
-          currentPeriodStart: item ? new Date(item.current_period_start * 1000) : undefined,
-          currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : undefined,
+          currentPeriodStart: toSafeDate(periodStartUnix),
+          currentPeriodEnd: toSafeDate(periodEndUnix),
           cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
         },
       }),
@@ -200,12 +220,14 @@ export class BillingService {
     const stripeCustomerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id;
 
     await TenantContext.runAsBypass(async () => {
-      const subscription = await this.prisma.subscription.findFirst({ where: { stripeCustomerId } });
+      const subscription = await this.prisma.tenantScoped.subscription.findFirst({
+        where: { stripeCustomerId },
+      });
       if (!subscription) {
         this.logger.warn(`Nu am găsit nicio companie pentru customer Stripe ${stripeCustomerId}.`);
         return;
       }
-      await this.prisma.invoice.upsert({
+      await this.prisma.tenantScoped.invoice.upsert({
         where: { stripeInvoiceId: invoice.id ?? '' },
         create: {
           companyId: subscription.companyId,
@@ -214,7 +236,7 @@ export class BillingService {
           currency: invoice.currency.toUpperCase(),
           status: invoice.status ?? 'unknown',
           pdfUrl: invoice.invoice_pdf ?? undefined,
-          issuedAt: new Date((invoice.created ?? Date.now() / 1000) * 1000),
+          issuedAt: toSafeDate(invoice.created) ?? new Date(),
         },
         update: {
           status: invoice.status ?? 'unknown',
@@ -234,7 +256,7 @@ export class BillingService {
         ? stripeSubscription.customer
         : stripeSubscription.customer.id;
     const subscription = await TenantContext.runAsBypass(() =>
-      this.prisma.subscription.findFirst({ where: { stripeCustomerId } }),
+      this.prisma.tenantScoped.subscription.findFirst({ where: { stripeCustomerId } }),
     );
     return subscription?.companyId ?? null;
   }
