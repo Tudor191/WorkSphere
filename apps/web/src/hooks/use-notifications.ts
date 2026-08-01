@@ -58,6 +58,13 @@ export function useRegisterDeviceToken() {
   });
 }
 
+export function useUnregisterDeviceToken() {
+  return useMutation({
+    mutationFn: (fcmToken: string) =>
+      apiFetch<void>(`/notifications/device-tokens/${encodeURIComponent(fcmToken)}`, { method: 'DELETE' }),
+  });
+}
+
 export interface NotificationPreferences {
   chatNotificationsEnabled: boolean;
 }

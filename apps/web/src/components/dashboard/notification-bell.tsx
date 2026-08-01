@@ -19,11 +19,15 @@ import {
   useNotifications,
   useRegisterDeviceToken,
   useUnreadNotificationsCount,
+  useUnregisterDeviceToken,
   useUpdateNotificationPreferences,
 } from '@/hooks/use-notifications';
 import { isPushConfigured, isPushSupportedByBrowser, onForegroundPush, requestPushToken } from '@/lib/push-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+
+/** Ultimul token FCM înregistrat de ACEST browser — vezi `syncPushToken`. */
+const FCM_TOKEN_STORAGE_KEY = 'worksphere:fcm-token';
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -42,6 +46,7 @@ export function NotificationBell() {
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const registerDeviceToken = useRegisterDeviceToken();
+  const unregisterDeviceToken = useUnregisterDeviceToken();
   const { data: preferences } = useNotificationPreferences();
   const updatePreferences = useUpdateNotificationPreferences();
   const [pushEnabled, setPushEnabled] = React.useState(false);
@@ -62,12 +67,46 @@ export function NotificationBell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Obține tokenul FCM curent și îl înregistrează pe server. Dacă acest
+   * browser avea deja un alt token înregistrat anterior (păstrat în
+   * localStorage) și Firebase întoarce acum unul diferit — tokenul vechi a
+   * devenit stale (ex. schimbare de configurare Firebase în timpul
+   * testării) — îl dezînregistrăm explicit. Altfel rămâne înregistrat pe
+   * server la nesfârșit și fiecare notificare ajunge dublată: câte un push
+   * separat pentru fiecare token valid al aceluiași user, chiar dacă e
+   * același browser fizic.
+   */
+  const syncPushToken = async (): Promise<string | null> => {
+    const token = await requestPushToken();
+    if (!token) return null;
+    const previousToken = localStorage.getItem(FCM_TOKEN_STORAGE_KEY);
+    if (previousToken && previousToken !== token) {
+      await unregisterDeviceToken.mutateAsync(previousToken).catch(() => undefined);
+    }
+    await registerDeviceToken.mutateAsync({ fcmToken: token, platform: 'web' });
+    localStorage.setItem(FCM_TOKEN_STORAGE_KEY, token);
+    return token;
+  };
+
+  React.useEffect(() => {
+    // Re-sincronizare silențioasă: dacă permisiunea browserului e deja
+    // acordată dintr-o sesiune anterioară, nu mai cerem userului să apese
+    // din nou butonul — reluăm automat tokenul curent (și curățăm orice
+    // token vechi rămas orfan, vezi `syncPushToken`).
+    if (canOfferPush && Notification.permission === 'granted') {
+      syncPushToken()
+        .then((token) => token && setPushEnabled(true))
+        .catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const enablePush = async () => {
     setPushError(null);
     try {
-      const token = await requestPushToken();
+      const token = await syncPushToken();
       if (token) {
-        await registerDeviceToken.mutateAsync({ fcmToken: token, platform: 'web' });
         setPushEnabled(true);
       } else {
         setPushError(

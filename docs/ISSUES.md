@@ -591,6 +591,60 @@ pentru o respingere de cerere de concediu, de la un capăt la altul) — `ee9138
 
 ---
 
+## 24. Notificările la mesaje de chat ajungeau dublate (aceeași notificare de 2 ori)
+
+**Simptom raportat:** la un mesaj nou de chat, userul primea aceeași
+notificare push de 2 ori (verificat vizual: 2 notificări identice în
+Windows Action Center pentru același mesaj, la două mesaje diferite
+consecutive).
+
+**Cauză:** `NotificationsService.notify()` trimite push către TOATE
+device-token-urile înregistrate ale userului (multi-device, by design).
+Frontend-ul nu curăța niciodată tokenul FCM vechi al aceluiași browser
+când Firebase întorcea unul nou (posibil în timpul testării/debugging-ului
+Firebase din sesiunea anterioară — vezi tiparul 4 mai jos, schimbare de
+proiect/config). Rezultat: 2 rânduri `DeviceToken` valide, ambele pentru
+ACELAȘI browser fizic, ambele primind push pentru fiecare notificare —
+inclusiv cele de la mesaje de chat, abia adăugate.
+
+**Soluție:** browserul își reține în `localStorage` ultimul token FCM
+înregistrat; la fiecare (re)înregistrare — inclusiv o resincronizare
+silențioasă la încărcarea paginii, dacă permisiunea era deja acordată
+dintr-o sesiune anterioară, ca userul să nu mai trebuiască să apese din
+nou butonul — dacă Firebase întoarce un token diferit de cel reținut,
+tokenul vechi e dezînregistrat explicit de pe server înainte de a-l
+înregistra pe cel nou. Curăță atât duplicatele viitoare, cât și pe cele
+deja existente (la primul reload după acest fix).
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+
+---
+
+## 25. Tema panoului de developer (platform admin) urma tema contului de companie logat în același browser
+
+**Simptom raportat:** schimbarea temei (light/dark) dintr-un cont de
+companie normal schimba și tema paginii `/dev` (panoul de administrare a
+platformei), deși sunt zone complet separate.
+
+**Cauză:** `ThemeProvider` (next-themes) e un singur provider global,
+montat o singură dată în `app/layout.tsx`, care controlează clasa
+`dark`/`light` de pe `<html>` pentru ÎNTREG site-ul — inclusiv `/dev` și
+`/dev/login`, care nu au niciun buton propriu de schimbat tema, dar
+moșteneau oricum preferința salvată în același `localStorage`, din
+același browser.
+
+**Soluție:** `app/dev/layout.tsx` nou — un layout Next.js dedicat pentru
+tot ce e sub `/dev`, care învelește conținutul într-un `<div className="dark">`.
+Variabilele CSS (`--background`, `--foreground` etc.) sunt definite ca
+proprietăți custom pe selectorul `.dark`, deci se moștenesc pe orice
+subarbore cu clasa asta, indiferent de clasa de pe `<html>` — panoul de
+developer rămâne mereu dark, izolat de tema companiei curente, fără
+niciun control expus care s-o poată schimba.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -617,3 +671,9 @@ pentru o respingere de cerere de concediu, de la un capăt la altul) — `ee9138
    fără plată" exista înainte** (#18) — un shortcut care era corect cât
    timp nu exista billing real devine o gaură de monetizare în momentul
    în care apare o cale de plată reală în paralel cu el.
+7. **Un token extern (FCM, dar și API keys/webhooks în general) are nevoie
+   de o strategie explicită de înlocuire, nu doar de înregistrare** (#24)
+   — altfel versiunile vechi rămân valide și active la nesfârșit, ducând
+   la comportament duplicat greu de diagnosticat (arată ca "backend-ul
+   trimite de 2 ori", dar de fapt sunt 2 ținte valide pentru același
+   apel).
