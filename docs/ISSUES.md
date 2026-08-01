@@ -713,7 +713,7 @@ câmpul ăsta".
 câmpul e gol. Backend-ul nu s-a schimbat — logica `dto.phone !== undefined`
 gestiona deja corect distincția, doar valoarea trimisă era greșită.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `40d3967`
 
 ---
 
