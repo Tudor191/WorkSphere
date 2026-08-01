@@ -90,7 +90,16 @@
    `billingCycle`).
 3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
    (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
-4. **Firebase Cloud Messaging** — necesită proiect Firebase.
+4. **Firebase Cloud Messaging (push)** — ✅ prima felie implementată:
+   `NotificationsModule` (listă, contor necitite, marcare citit,
+   înregistrare/dezînregistrare device token) + clopoțel în header cu
+   buton "Activează notificările push". Primul declanșator real cablat:
+   aprobarea/respingerea unei cereri de concediu notifică angajatul.
+   Are nevoie de un proiect Firebase (gratuit) — vezi `.env.example` din
+   `apps/api` (service account) și `apps/web` (config public + cheie
+   VAPID). Fără ele, notificările tot apar în aplicație (clopoțel), doar
+   push-ul efectiv nu se trimite. Rămâne pentru o felie următoare:
+   cablarea altor declanșatoare (mesaj chat, alocare task etc.).
 5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
    toate.
    - **Proiecte**: ✅ prima felie implementată — API complet (Projects +
