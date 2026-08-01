@@ -88,21 +88,31 @@
    tokeni AI legat de plan (`aiCreditsPerMonth`), facturare anuală
    promovată explicit în UI (backend-ul o suportă deja prin
    `billingCycle`).
-3. **Twilio SMS** — ✅ prima felie implementată: `TwilioService` (opțional,
-   la fel ca AI/Stripe/Firebase — necompletat = SMS dezactivat, restul
-   aplicației pornește normal). Cont personal Twilio (trial), decizie
-   temporară — se poate trece pe alt furnizor (Vonage, SMS.ro pentru cost
-   mai bun pe piața locală) fără să schimbe restul arhitecturii, doar
-   `TwilioService`. Userul își setează numărul de telefon din
-   `/dashboard/account` (format internațional, ex. `+40712345678`) și
-   activează explicit comutatorul „Notificări prin SMS" de acolo — opt-in
-   strict, implicit dezactivat (spre deosebire de push), pentru că SMS-ul
-   costă bani per mesaj. Primul (și singurul, deliberat) declanșator
-   cablat: aprobarea/respingerea unei cereri de concediu — nu și mesajele
-   de chat, prea frecvente ca să merite cost per SMS. Are nevoie de
-   `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` în mediul
-   API-ului. Rămâne pentru o felie următoare: cablarea altor declanșatoare
-   importante (dacă apar) și migrarea pe cont de firmă / alt furnizor.
+3. **Twilio SMS** — ✅ prima felie implementată (`TwilioService`, opțional,
+   la fel ca AI/Stripe/Firebase), dar **ținută deliberat în standby**:
+   câmpul de telefon și comutatorul „Notificări prin SMS" sunt scoase din
+   `/dashboard/account` (vezi comentariul din fișier) — decizie de
+   business, nu bug. Motiv: contul Twilio **trial** nu permite deloc text
+   liber la trimitere (doar șabloane fixe, fără variabile — testat direct,
+   confirmat cu eroarea API `Invalid template name`), deci mesajele
+   noastre dinamice (nume angajat, motiv respingere etc.) nu pot fi
+   trimise până la upgrade-ul contului (elimină restricția complet, fără
+   nicio schimbare de cod). Codul rămâne complet funcțional; ca s-o
+   activăm, e nevoie doar de:
+   1. Upgrade cont Twilio (metodă de plată + credit minim).
+   2. `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` în
+      mediul API-ului — fără ele, SMS-ul rămâne dezactivat, nu crapă.
+   3. Readăugarea câmpului de telefon + comutatorului din
+      `apps/web/src/app/(dashboard)/dashboard/account/page.tsx`
+      (comentariul de acolo explică exact ce s-a scos).
+
+   Cont personal Twilio, decizie temporară — se poate trece pe alt
+   furnizor (Vonage, SMS.ro pentru cost mai bun pe piața locală) fără să
+   schimbe restul arhitecturii, doar `TwilioService`. Primul (și singurul,
+   deliberat) declanșator cablat, odată activat: aprobarea/respingerea
+   unei cereri de concediu — nu și mesajele de chat, prea frecvente ca să
+   merite cost per SMS. Rămâne pentru o felie următoare: cablarea altor
+   declanșatoare importante (dacă apar).
 4. **Firebase Cloud Messaging (push)** — ✅ implementat și **confirmat
    funcțional** printr-o notificare push reală, primită de la un capăt la
    altul (respingere cerere de concediu → notificare în aplicație → push
