@@ -34,7 +34,15 @@ export class TwilioService {
   async sendSms(to: string, body: string): Promise<void> {
     if (!this.client) return;
     try {
-      await this.client.messages.create({ to, from: this.fromNumber, body });
+      // TEMPORAR — test de diagnostic cont trial Twilio, vezi discuția din
+      // chat. Ignorăm `body`-ul real și trimitem textul EXACT al șablonului
+      // fix de trial ("Account Alerts / Notifications"), ca să verificăm
+      // dacă pipeline-ul nostru (API → Twilio → telefon) funcționează,
+      // indiferent de restricția de conținut. DE REVENIT după test.
+      const testBody =
+        'Alert: Your account balance is below $100. Please deposit funds to avoid overdraft fees. Test message from Twilio.';
+      await this.client.messages.create({ to, from: this.fromNumber, body: testBody });
+      void body;
     } catch (error) {
       this.logger.warn(`Trimitere SMS eșuată: ${error instanceof Error ? error.message : error}`);
     }
