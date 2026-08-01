@@ -208,6 +208,10 @@ model User {
   /// unei parole proprii la prima autentificare, ca angajatul să nu rămână
   /// dependent de un șir de caractere random pe care nu-l poate reține.
   mustChangePassword Boolean  @default(false)
+  /// preferință individuală — dezactivează STRICT notificările (in-app +
+  /// push) pentru mesaje noi de chat; restul tipurilor de notificări
+  /// (concedii, task-uri etc.) nu sunt afectate.
+  chatNotificationsEnabled Boolean @default(true)
   twoFactorEnabled Boolean    @default(false)
   twoFactorSecret  String?
   lastLoginAt      DateTime?

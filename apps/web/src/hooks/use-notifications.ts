@@ -57,3 +57,30 @@ export function useRegisterDeviceToken() {
       apiFetch<void>('/notifications/device-tokens', { method: 'POST', body: JSON.stringify(input) }),
   });
 }
+
+export interface NotificationPreferences {
+  chatNotificationsEnabled: boolean;
+}
+
+/** `companyId` în queryKey — vezi comentariul din `use-employees.ts`. */
+export function useNotificationPreferences() {
+  const { user } = useAuth();
+  const companyId = user?.companyId;
+  return useQuery({
+    queryKey: ['notifications', 'preferences', companyId],
+    queryFn: () => apiFetch<NotificationPreferences>('/notifications/preferences'),
+    enabled: Boolean(companyId),
+  });
+}
+
+export function useUpdateNotificationPreferences() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NotificationPreferences) =>
+      apiFetch<NotificationPreferences>('/notifications/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications', 'preferences'] }),
+  });
+}

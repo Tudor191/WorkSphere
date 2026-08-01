@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { FirebaseService } from './firebase.service';
 import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
+import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 
 @Injectable()
 export class NotificationsService {
@@ -52,6 +53,22 @@ export class NotificationsService {
 
   async unregisterDeviceToken(userId: string, fcmToken: string) {
     await this.prisma.tenantScoped.deviceToken.deleteMany({ where: { fcmToken, userId } });
+  }
+
+  async getPreferences(userId: string) {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { chatNotificationsEnabled: true },
+    });
+    return user;
+  }
+
+  async updatePreferences(userId: string, dto: UpdateNotificationPreferencesDto) {
+    return this.prisma.tenantScoped.user.update({
+      where: { id: userId },
+      data: { chatNotificationsEnabled: dto.chatNotificationsEnabled },
+      select: { chatNotificationsEnabled: true },
+    });
   }
 
   /**

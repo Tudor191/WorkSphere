@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { Bell, BellRing, Check } from 'lucide-react';
+import { Bell, BellRing, Check, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,9 +15,11 @@ import {
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
+  useNotificationPreferences,
   useNotifications,
   useRegisterDeviceToken,
   useUnreadNotificationsCount,
+  useUpdateNotificationPreferences,
 } from '@/hooks/use-notifications';
 import { isPushConfigured, isPushSupportedByBrowser, onForegroundPush, requestPushToken } from '@/lib/push-notifications';
 import { useQueryClient } from '@tanstack/react-query';
@@ -39,6 +42,8 @@ export function NotificationBell() {
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const registerDeviceToken = useRegisterDeviceToken();
+  const { data: preferences } = useNotificationPreferences();
+  const updatePreferences = useUpdateNotificationPreferences();
   const [pushEnabled, setPushEnabled] = React.useState(false);
   const [pushError, setPushError] = React.useState<string | null>(null);
 
@@ -99,6 +104,19 @@ export function NotificationBell() {
             </button>
           )}
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+          <span className="flex items-center gap-2 text-sm">
+            <MessageSquare className="h-4 w-4" />
+            Notificări la mesaje chat
+          </span>
+          <Switch
+            checked={preferences?.chatNotificationsEnabled ?? true}
+            disabled={!preferences || updatePreferences.isPending}
+            onCheckedChange={(checked) => updatePreferences.mutate({ chatNotificationsEnabled: checked })}
+          />
+        </div>
         <DropdownMenuSeparator />
 
         {canOfferPush && !pushEnabled && (

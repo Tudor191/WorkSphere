@@ -95,14 +95,17 @@
    altul (respingere cerere de concediu → notificare în aplicație → push
    FCM → notificare nativă în Windows/Edge, verificat vizual de user).
    `NotificationsModule` (listă, contor necitite, marcare citit,
-   înregistrare/dezînregistrare device token) + clopoțel în header cu
-   buton "Activează notificările push". Primul declanșator real cablat:
-   aprobarea/respingerea unei cereri de concediu notifică angajatul.
+   înregistrare/dezînregistrare device token, preferințe proprii) +
+   clopoțel în header cu buton "Activează notificările push". Declanșatoare
+   reale cablate: aprobarea/respingerea unei cereri de concediu notifică
+   angajatul; un mesaj nou de chat notifică ceilalți membri ai canalului,
+   cu preferință individuală de activare/dezactivare strict pentru chat
+   (`chatNotificationsEnabled` pe `User`, comutator direct din clopoțel).
    Are nevoie de un proiect Firebase (gratuit) — vezi `.env.example` din
    `apps/api` (service account) și `apps/web` (config public + cheie
    VAPID). Fără ele, notificările tot apar în aplicație (clopoțel), doar
    push-ul efectiv nu se trimite. Rămâne pentru o felie următoare:
-   cablarea altor declanșatoare (mesaj chat, alocare task etc.).
+   cablarea altor declanșatoare (alocare task etc.).
 5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
    toate.
    - **Proiecte**: ✅ prima felie implementată — API complet (Projects +

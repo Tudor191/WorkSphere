@@ -1,13 +1,24 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 
+const MESSAGE_PREVIEW_MAX_LENGTH = 120;
+
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** Canale vizibile userului curent: toate cele publice + cele private din care face parte. */
   findChannels(userId: string) {
@@ -83,10 +94,55 @@ export class ChatService {
   }
 
   async createMessage(channelId: string, userId: string, dto: CreateMessageDto) {
-    await this.assertAccess(channelId, userId);
-    return this.prisma.tenantScoped.chatMessage.create({
+    const channel = await this.assertAccess(channelId, userId);
+    const message = await this.prisma.tenantScoped.chatMessage.create({
       data: { channelId, authorId: userId, content: dto.content },
       include: { author: { select: SAFE_USER_SELECT } },
     });
+    await this.notifyNewMessage(channel, message);
+    return message;
+  }
+
+  /**
+   * Notifică membrii canalului (mai puțin autorul) despre mesajul nou,
+   * respectând preferința individuală `chatNotificationsEnabled`. Rulează
+   * după ce mesajul e deja salvat — un eșec de notificare (push
+   * neconfigurat, token invalid etc.) nu trebuie să blocheze trimiterea
+   * mesajului în sine (`NotificationsService.notify` nu aruncă la eșec de
+   * push, dar izolăm oricum apelul per-membru).
+   */
+  private async notifyNewMessage(
+    channel: { id: string; name: string },
+    message: {
+      id: string;
+      content: string;
+      authorId: string;
+      author: { firstName: string; lastName: string };
+    },
+  ) {
+    const members = await this.prisma.tenantScoped.chatChannelMember.findMany({
+      where: { channelId: channel.id, user: { chatNotificationsEnabled: true } },
+      select: { userId: true },
+    });
+    const preview =
+      message.content.length > MESSAGE_PREVIEW_MAX_LENGTH
+        ? `${message.content.slice(0, MESSAGE_PREVIEW_MAX_LENGTH - 3)}...`
+        : message.content;
+    const authorName = `${message.author.firstName} ${message.author.lastName}`;
+
+    await Promise.all(
+      members
+        .filter((m) => m.userId !== message.authorId)
+        .map((m) =>
+          this.notifications
+            .notify(m.userId, {
+              type: 'chat_message',
+              title: `${authorName} în #${channel.name}`,
+              body: preview,
+              metadata: { channelId: channel.id, messageId: message.id },
+            })
+            .catch(() => undefined),
+        ),
+    );
   }
 }
