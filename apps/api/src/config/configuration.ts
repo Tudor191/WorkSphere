@@ -22,6 +22,11 @@ export interface AppConfig {
     secretKey: string;
     webhookSecret: string;
   };
+  firebase: {
+    projectId: string;
+    clientEmail: string;
+    privateKey: string;
+  };
   frontendUrl: string;
 }
 
@@ -58,6 +63,16 @@ export default (): { app: AppConfig } => ({
       // la OpenAI, pornirea aplicației nu trebuie să depindă de asta.
       secretKey: process.env.STRIPE_SECRET_KEY ?? '',
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    },
+    firebase: {
+      // Necompletat = push dezactivat (vezi FirebaseService) — notificările
+      // rămân vizibile în aplicație (tabelul Notification), doar push-ul
+      // efectiv nu se trimite.
+      projectId: process.env.FIREBASE_PROJECT_ID ?? '',
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? '',
+      // Cheia privată vine din JSON-ul de service account, cu `\n` literali
+      // în variabila de mediu — trebuie convertiți înapoi în linii noi reale.
+      privateKey: (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
     },
     frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   },

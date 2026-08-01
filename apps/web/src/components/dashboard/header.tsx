@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/components/providers/auth-provider';
+import { NotificationBell } from '@/components/dashboard/notification-bell';
 
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const { user, logout } = useAuth();
@@ -27,6 +28,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
       <div className="hidden text-sm text-muted-foreground lg:block">{user?.companySlug ?? ''}</div>
 
       <div className="flex items-center gap-2">
+        <NotificationBell />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

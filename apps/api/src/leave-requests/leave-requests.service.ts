@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 
@@ -24,7 +25,10 @@ export function countBusinessDays(start: Date, end: Date): number {
 
 @Injectable()
 export class LeaveRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   findAll() {
     return this.prisma.tenantScoped.leaveRequest.findMany({
@@ -116,7 +120,7 @@ export class LeaveRequestsService {
    * neschimbat.
    */
   async approve(id: string, approvedById: string) {
-    return this.prisma.runInTenantTransaction(async (tx) => {
+    const updated = await this.prisma.runInTenantTransaction(async (tx) => {
       const request = await tx.leaveRequest.findUnique({
         where: { id },
         include: { leaveType: true },
@@ -171,6 +175,13 @@ export class LeaveRequestsService {
         include: { leaveType: true },
       });
     });
+
+    await this.notifyEmployee(updated.employeeId, {
+      type: 'leave_request_approved',
+      title: 'Cerere de concediu aprobată',
+      body: `Cererea ta de concediu (${updated.leaveType.name}) a fost aprobată.`,
+    });
+    return updated;
   }
 
   async reject(id: string, approvedById: string, dto: RejectLeaveRequestDto) {
@@ -179,7 +190,7 @@ export class LeaveRequestsService {
     if (request.status !== 'PENDING') {
       throw new ConflictException('Doar cererile în așteptare pot fi respinse.');
     }
-    return this.prisma.tenantScoped.leaveRequest.update({
+    const updated = await this.prisma.tenantScoped.leaveRequest.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -188,6 +199,15 @@ export class LeaveRequestsService {
         rejectionReason: dto.rejectionReason,
       },
     });
+
+    await this.notifyEmployee(updated.employeeId, {
+      type: 'leave_request_rejected',
+      title: 'Cerere de concediu respinsă',
+      body: dto.rejectionReason
+        ? `Cererea ta de concediu a fost respinsă: ${dto.rejectionReason}`
+        : 'Cererea ta de concediu a fost respinsă.',
+    });
+    return updated;
   }
 
   async cancel(id: string) {
@@ -215,5 +235,27 @@ export class LeaveRequestsService {
       throw new NotFoundException('Utilizatorul curent nu are o fișă de angajat asociată.');
     }
     return employee;
+  }
+
+  /**
+   * Notificarea e un bonus, nu o condiție de succes a aprobării/respingerii
+   * — orice eroare aici (ex. Firebase indisponibil) se loghează, nu se lasă
+   * să strice răspunsul către cel care a aprobat/respins cererea.
+   */
+  private async notifyEmployee(
+    employeeId: string,
+    input: { type: string; title: string; body: string },
+  ) {
+    try {
+      const employee = await this.prisma.tenantScoped.employee.findUnique({
+        where: { id: employeeId },
+        select: { userId: true },
+      });
+      if (employee) {
+        await this.notifications.notify(employee.userId, input);
+      }
+    } catch {
+      // eșecul de notificare nu trebuie să strice fluxul de aprobare/respingere
+    }
   }
 }

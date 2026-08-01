@@ -28,6 +28,7 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
+    "firebase-admin": "^14.2.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
     "openai": "^7.3.0",
