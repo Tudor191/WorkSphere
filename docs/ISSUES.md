@@ -686,7 +686,7 @@ de concediu — nu mai e legat de `isPaid`. Un tip fără plafon configurat
 un plafon personal fix) rămâne neplafonat, la fel ca "Fără plată".
 "Concediu de odihnă" (cu 21 zile/an) rămâne plafonat exact ca înainte.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `2990b2c`
 
 ---
 
