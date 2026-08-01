@@ -567,6 +567,29 @@ aceluiași token e idempotentă pe server).
 
 ---
 
+## 23. Înregistrarea token-ului de push pica cu "Unexpected end of JSON input"
+
+**Simptom raportat:** după ce Firebase a obținut cu succes un token (deci
+tot ce ținea de configurarea Firebase era în sfârșit corectă), înregistrarea
+lui pe server pica cu `Failed to execute 'json' on 'Response': Unexpected
+end of JSON input`.
+
+**Cauză:** `NotificationsService.registerDeviceToken`/`markRead`/
+`markAllRead`/`unregisterDeviceToken` nu întorc nimic (`void`) — dar
+controller-ele lor nu declarau explicit `@HttpCode(HttpStatus.NO_CONTENT)`,
+deci NestJS răspundea cu statusul implicit (200/201) și body gol.
+`apiFetch` (frontend) tratează explicit doar statusul `204` ca "fără
+body" — orice alt status încearcă necondiționat `response.json()`, care
+aruncă exact această eroare pe un body gol.
+
+**Soluție:** adăugat `@HttpCode(HttpStatus.NO_CONTENT)` pe toate cele
+patru endpoint-uri care nu întorc date, la fel ca restul aplicației
+(ex. `employees.controller.ts`, `remove()`/`hardDelete()`).
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `ee91386`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
