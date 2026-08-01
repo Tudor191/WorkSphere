@@ -21,8 +21,12 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Payload STRICT `data` (fără `notification` la nivelul mesajului FCM) —
+// vezi comentariul din `firebase.service.ts` (`sendToTokens`). Cu un
+// payload `notification`, SDK-ul ar afișa-o automat AICI, pe lângă
+// `showNotification` de mai jos, rezultând 2 notificări identice.
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title ?? 'WorkSphere';
-  const body = payload.notification?.body ?? '';
+  const title = payload.data?.title ?? 'WorkSphere';
+  const body = payload.data?.body ?? '';
   self.registration.showNotification(title, { body });
 });

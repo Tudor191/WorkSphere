@@ -598,25 +598,38 @@ notificare push de 2 ori (verificat vizual: 2 notificări identice în
 Windows Action Center pentru același mesaj, la două mesaje diferite
 consecutive).
 
-**Cauză:** `NotificationsService.notify()` trimite push către TOATE
-device-token-urile înregistrate ale userului (multi-device, by design).
-Frontend-ul nu curăța niciodată tokenul FCM vechi al aceluiași browser
-când Firebase întorcea unul nou (posibil în timpul testării/debugging-ului
-Firebase din sesiunea anterioară — vezi tiparul 4 mai jos, schimbare de
-proiect/config). Rezultat: 2 rânduri `DeviceToken` valide, ambele pentru
-ACELAȘI browser fizic, ambele primind push pentru fiecare notificare —
-inclusiv cele de la mesaje de chat, abia adăugate.
+**Prima rundă de cauze (reale ca îmbunătățire, dar nu cauza finală):**
+bănuiam token-uri FCM duplicate pentru același user/browser (rămase din
+sesiunea de debugging Firebase anterioară), cu `NotificationsService.notify()`
+trimițând deci push de 2 ori, către 2 token-uri valide ale aceluiași
+device. Fix aplicat (curățare token vechi la re-înregistrare, plus
+resincronizare silențioasă la încărcarea paginii) — util în general
+(evită acumularea de token-uri stale), dar verificarea directă în
+Postgres (`device_tokens`, `notifications`) a arătat clar că NU asta era
+cauza: userul avea UN SINGUR token, iar cele 2 notificări din
+`Notification` corespundeau la 2 mesaje diferite ("da?" și "da", la
+~28 secunde distanță) — deci nici DB-ul nu genera duplicate.
 
-**Soluție:** browserul își reține în `localStorage` ultimul token FCM
-înregistrat; la fiecare (re)înregistrare — inclusiv o resincronizare
-silențioasă la încărcarea paginii, dacă permisiunea era deja acordată
-dintr-o sesiune anterioară, ca userul să nu mai trebuiască să apese din
-nou butonul — dacă Firebase întoarce un token diferit de cel reținut,
-tokenul vechi e dezînregistrat explicit de pe server înainte de a-l
-înregistra pe cel nou. Curăță atât duplicatele viitoare, cât și pe cele
-deja existente (la primul reload după acest fix).
+**Cauza reală:** payload-ul FCM trimis de backend includea un câmp
+`notification` la nivelul mesajului (`sendEachForMulticast({ tokens,
+notification, data })`). Pentru Web Push, SDK-ul Firebase din service
+worker afișează AUTOMAT o notificare nativă când payload-ul are un câmp
+`notification` — independent de handler-ul propriu `onBackgroundMessage`
+din `firebase-messaging-sw.js`, care ȘI el apela manual
+`self.registration.showNotification(...)`. Rezultat: 2 afișări native
+pentru un singur push primit, pe un singur token, pentru un singur rând
+`Notification` — bug cunoscut al Firebase JS SDK când ambele căi de
+afișare sunt active simultan.
 
-**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`
+**Soluție finală:** payload trimis STRICT ca `data` (fără câmp
+`notification` la nivelul mesajului) — `firebase.service.ts` mută
+title/body în `data`; `firebase-messaging-sw.js` (background) și
+`push-notifications.ts` (`onForegroundPush`, prim-plan) citesc acum
+`payload.data.title`/`payload.data.body` în loc de `payload.notification`.
+Cu payload strict `data`, SDK-ul nu mai afișează nimic automat — doar
+handler-ul nostru, o singură dată.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `8b7da3f`, `<pending>`
 
 ---
 
@@ -672,8 +685,16 @@ niciun control expus care s-o poată schimba.
    timp nu exista billing real devine o gaură de monetizare în momentul
    în care apare o cale de plată reală în paralel cu el.
 7. **Un token extern (FCM, dar și API keys/webhooks în general) are nevoie
-   de o strategie explicită de înlocuire, nu doar de înregistrare** (#24)
-   — altfel versiunile vechi rămân valide și active la nesfârșit, ducând
-   la comportament duplicat greu de diagnosticat (arată ca "backend-ul
-   trimite de 2 ori", dar de fapt sunt 2 ținte valide pentru același
-   apel).
+   de o strategie explicită de înlocuire, nu doar de înregistrare** — bună
+   practică, aplicată la #24, dar NU cauza reală a acelui bug (vezi #8 mai
+   jos — verificat direct în DB, nu erau token-uri duplicate).
+8. **O ipoteză plauzibilă tot trebuie verificată direct în date înainte de
+   a fi tratată ca fix final** (#24) — prima explicație ("token-uri FCM
+   duplicate") suna perfect rezonabil și chiar merita fixată oricum, dar
+   query-uri directe în Postgres (`device_tokens`, `notifications`) au
+   arătat clar că nu asta producea duplicatele. Cauza reală era la nivelul
+   SDK-ului Firebase: payload `notification` + handler propriu
+   `onBackgroundMessage` = afișare dublă, un comportament documentat al
+   SDK-ului, nu al aplicației. Când un push/notification SDK se comportă
+   neașteptat, verifică întâi comportamentul documentat al SDK-ului, nu
+   presupune automat că bug-ul e în stratul propriu de date.

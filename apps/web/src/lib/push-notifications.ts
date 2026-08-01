@@ -86,6 +86,7 @@ export function onForegroundPush(callback: (title: string, body: string) => void
     return () => {};
   }
   return onMessage(messaging, (payload) => {
-    callback(payload.notification?.title ?? 'WorkSphere', payload.notification?.body ?? '');
+    // Payload STRICT `data` — vezi comentariul din `firebase.service.ts`.
+    callback(payload.data?.title ?? 'WorkSphere', payload.data?.body ?? '');
   });
 }

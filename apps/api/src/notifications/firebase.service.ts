@@ -43,7 +43,17 @@ export class FirebaseService {
     return this.app !== null;
   }
 
-  /** Întoarce token-urile pe care Firebase le-a raportat ca nevalide/expirate — apelantul le poate șterge din DB. */
+  /**
+   * Întoarce token-urile pe care Firebase le-a raportat ca nevalide/expirate — apelantul le poate șterge din DB.
+   *
+   * Trimitem STRICT `data` (niciun câmp `notification` la nivelul mesajului
+   * FCM) — cu un payload `notification`, SDK-ul Firebase din service worker
+   * afișează automat notificarea PE LÂNGĂ ce afișează manual handler-ul
+   * nostru `onBackgroundMessage`, rezultând în 2 notificări native identice
+   * pentru un singur mesaj (vezi `docs/ISSUES.md` #24 — nu era despre
+   * token-uri duplicate, cum părea inițial). Cu payload strict `data`, doar
+   * handler-ul nostru din `firebase-messaging-sw.js` afișează notificarea.
+   */
   async sendToTokens(
     tokens: string[],
     notification: { title: string; body: string },
@@ -54,8 +64,7 @@ export class FirebaseService {
     try {
       const response = await getMessaging(this.app).sendEachForMulticast({
         tokens,
-        notification,
-        data,
+        data: { title: notification.title, body: notification.body, ...data },
       });
       const invalidTokens: string[] = [];
       response.responses.forEach((r, i) => {
