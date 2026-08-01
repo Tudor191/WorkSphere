@@ -8,9 +8,9 @@
 | 2. Wireframe | Structură pagini/dashboard descrisă în `ARCHITECTURE.md` §5 și componentele din `apps/web` | ✅ Implicit prin implementare directă în cod |
 | 3. UI Design | Design system Tailwind + shadcn/ui, dark/light mode | ✅ Fundație gata |
 | 4. Database | Schema Prisma completă, toate modulele | ✅ Făcut (`packages/database/prisma/schema.prisma`) |
-| 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟡 Parțial — vezi mai jos |
-| 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟡 Parțial — vezi mai jos |
-| 7. AI | OpenAI + RAG | ⬜ Neînceput — vezi „Ce urmează" |
+| 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
+| 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
+| 7. AI | OpenAI + RAG | 🟡 Prima felie implementată (fără RAG încă), ținută deliberat în standby — vezi „Ce urmează" |
 | 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 Teste unitare + e2e reale (auth, RBAC, izolare multi-tenant) pe modulele implementate; coverage 80% pe tot produsul e prematur la acest stadiu |
 | 9. Deployment | Docker + CI/CD + Nginx | 🟡 Dockerfile-uri multi-stage (api/web) + docker-compose (Postgres/pgvector, Redis, Nginx) + GitHub Actions (lint/typecheck/build/test/e2e). Build-urile Docker nu au putut fi testate live în acest mediu (egress blocat spre registry-ul Docker Hub) — verificate prin review manual atent, nu prin `docker build` real |
 | 10. Lansare Beta | — | ⬜ Neînceput |
@@ -31,6 +31,17 @@
   `attendance` (check-in/check-out + calcul ore suplimentare), `projects` +
   `tasks`, `clients` + `leads`, `products` + `stock-movements`, `chat`
   (canale + mesaje).
+- `notifications` — listă, contor necitite, marcare citit, preferințe
+  proprii (chat/SMS); canale: in-app (mereu), push FCM (opțional,
+  confirmat funcțional end-to-end), SMS Twilio (opțional, în standby —
+  vezi „Ce urmează").
+- `billing` — Stripe Checkout + Billing Portal + webhook, confirmat
+  funcțional cu o plată reală de test.
+- `ai` — asistent conversațional simplu (OpenAI), ținut deliberat în
+  standby (vezi „Ce urmează").
+- `platform-admin` — panou separat de administrare a platformei (listă
+  companii, hard reset), autentificare proprie, izolat de conturile
+  companiilor client.
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -46,6 +57,14 @@
   API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
   statistici reale din DB, plus Proiecte, Clienți, Lead-uri, Produse și
   Chat.
+- Clopoțel de notificări în header — listă, marcare citit, activare push,
+  preferință de chat.
+- `/dashboard/account` — profil propriu, schimbare parolă, plan/abonament
+  (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată.
+- `/dashboard/assistant` — asistent AI, cod gata dar scos din navigare
+  (standby).
+- `/dev` — panou separat de platform admin (login propriu, temă forțată
+  dark, izolat de tema conturilor de companie).
 
 ## Ce urmează (nu a fost implementat fals — necesită decizii de business)
 
