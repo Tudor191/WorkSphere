@@ -448,6 +448,44 @@ funcțional doar pentru downgrade la planul gratuit (`trial`).
 
 ---
 
+## 19. Webhook Stripe pica cu 500 pe `checkout.session.completed` — planul rămânea "trial" după plată reală
+
+**Simptom raportat:** userul a testat checkout-ul real (card de test Stripe),
+plata a mers, dar în aplicație planul a rămas tot "Trial" — nicio schimbare
+vizibilă după ce s-a întors din Stripe.
+
+**Investigație:** log-ul `stripe listen` arăta toate evenimentele
+întoarse cu `[200]`, cu o singură excepție: `checkout.session.completed`
+→ `[500]` — exact evenimentul care ar fi trebuit să actualizeze
+abonamentul.
+
+**Cauze găsite (două, în același fișier):**
+1. `resolveCompanyId` (fallback după `stripeCustomerId`) și ambele
+   interogări din `onInvoiceEvent` foloseau clientul Prisma brut
+   (`this.prisma.subscription`/`this.prisma.invoice`) în loc de
+   `this.prisma.tenantScoped...` — bypass complet al contextului de
+   tenant, nu doar al flag-ului de RLS bypass. Un `SELECT` brut sub RLS
+   fail-closed întoarce tăcut zero rânduri (de-asta `invoice.paid` tot
+   întorcea 200 — pur și simplu nu găsea și nu făcea nimic), dar un
+   `INSERT` brut ar lovi clauza `WITH CHECK` și ar arunca eroare reală. Nu
+   a fost declanșatorul exact în acest caz (`checkout.session.completed`
+   rezolvă `companyId` din metadata subscription-ului, fără să ajungă la
+   acest fallback), dar e aceeași clasă de bug ca #12.2.
+2. `current_period_start`/`current_period_end` erau citite doar de pe
+   `SubscriptionItem` (versiuni API Stripe mai noi) — dacă versiunea
+   implicită de API a contului Stripe folosit e mai veche, câmpurile
+   lipsesc de-acolo, producând `new Date(NaN)` ("Invalid Date"), pe care
+   Prisma îl respinge la scriere.
+
+**Soluție:** toate interogările din `BillingService` folosesc acum
+`tenantScoped`; citirea perioadei verifică ambele locuri posibile
+(item + nivelul vechi de subscription), iar un helper `toSafeDate()`
+respinge explicit orice dată invalidă în loc s-o lase să ajungă la Prisma.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea retestării) — `0529357`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
