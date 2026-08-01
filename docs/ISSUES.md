@@ -486,6 +486,33 @@ respinge explicit orice dată invalidă în loc s-o lase să ajungă la Prisma.
 
 ---
 
+## 20. Stripe te trimitea înapoi pe pagina greșită după plată — plus lipsea confirmarea vizuală
+
+**Simptom raportat:** după alegerea și plata unui plan, userul ajungea pe
+"Setări companie" fără niciun semn vizibil că plata a fost înregistrată —
+și a remarcat, pe bună dreptate, că un checkout mai profesional ar trebui
+să-i arate datele firmei înainte de plată, și un mesaj clar de succes după.
+
+**Cauză:** `success_url`/`cancel_url`/`return_url` din `BillingService`
+indicau toate spre `/dashboard/settings` ("Setări companie"), dar
+selectorul de plan există pe `/dashboard/account` ("Setările contului") —
+o pagină complet diferită. Nicio confirmare pre-plată, niciun mesaj
+post-plată.
+
+**Soluție:**
+- Corectate toate cele trei URL-uri spre `/dashboard/account`.
+- Adăugat un dialog de confirmare ÎNAINTE de checkout — arată numele
+  firmei, CUI, email și planul/prețul ales, cu buton explicit "Continuă
+  spre plată", în loc de redirect instant la click.
+- La întoarcere, banner clar de succes/anulare (citit o singură dată din
+  `?checkout=`, apoi URL-ul e curățat cu `router.replace` ca un refresh să
+  nu repete mesajul) + câteva refetch-uri automate în ~6s, ca planul nou
+  (actualizat de webhook asincron) să apară fără reîncărcare manuală.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `7784a2c`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
