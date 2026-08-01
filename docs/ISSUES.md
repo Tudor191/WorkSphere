@@ -659,6 +659,37 @@ niciun control expus care s-o poată schimba.
 
 ---
 
+## 26. Concediul medical nu putea fi aprobat NICIODATĂ — "zile insuficiente în sold"
+
+**Simptom raportat:** aprobarea unei cereri de "Concediu medical" (4
+zile), deși angajatul avea sold disponibil la "Concediu de odihnă" (12
+din 21 zile), eșua cu „Zile de concediu insuficiente în sold pentru
+această perioadă" — pentru orice număr de zile cerute, oricât de mic.
+
+**Cauză:** `LeaveRequestsService.approve()` calcula plafonul disponibil
+ca `existingBalance?.totalDays ?? leaveType.defaultDaysPerYear ?? 0` —
+tipul de concediu "Concediu medical" (creat la înregistrarea companiei,
+`AuthService.doRegister`) are `isPaid: true` dar NU are
+`defaultDaysPerYear` setat (spre deosebire de "Concediu de odihnă", cu
+21). Verificarea era gardată de `leaveType.isPaid`, nu de existența unui
+plafon real — deci orice tip plătit FĂRĂ `defaultDaysPerYear` configurat
+era tratat ca având plafon 0, blocând orice aprobare, indiferent de
+numărul de zile cerute. Cererile anterioare de concediu medical din
+timpul testării fuseseră respinse, nu aprobate — ceea ce ascundea bug-ul
+(nimeni nu observase eroarea de aprobare pentru că testele anterioare
+alegeau mereu "Respinge").
+
+**Soluție:** plafonul se aplică STRICT când există fie un sold explicit
+deja creat pentru angajat, fie un `defaultDaysPerYear` configurat pe tipul
+de concediu — nu mai e legat de `isPaid`. Un tip fără plafon configurat
+(concediul medical, care în România e girat de certificat medical, nu de
+un plafon personal fix) rămâne neplafonat, la fel ca "Fără plată".
+"Concediu de odihnă" (cu 21 zile/an) rămâne plafonat exact ca înainte.
+
+**Status:** ✅ Rezolvat (aplicat, în așteptarea confirmării userului) — `<pending>`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și

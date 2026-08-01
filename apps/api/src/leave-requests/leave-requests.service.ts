@@ -141,32 +141,40 @@ export class LeaveRequestsService {
         },
       });
 
-      if (request.leaveType.isPaid) {
-        const totalDays = existingBalance?.totalDays ?? request.leaveType.defaultDaysPerYear ?? 0;
+      // Soldul se aplică STRICT tipurilor de concediu cu o limită anuală
+      // configurată (`defaultDaysPerYear`) sau cu un sold explicit deja
+      // creat pentru angajat (ex. concediul de odihnă, cu 21 zile/an). Un
+      // tip fără limită configurată (ex. concediul medical — care în
+      // România nu se scade dintr-un plafon personal fix, ci e girat de
+      // certificat medical) nu trebuie plafonat deloc — anterior, orice
+      // tip fără `defaultDaysPerYear` era tratat implicit ca "0 zile
+      // disponibile", blocând orice aprobare de concediu medical.
+      const totalDays = existingBalance?.totalDays ?? request.leaveType.defaultDaysPerYear;
+      if (totalDays !== null && totalDays !== undefined) {
         const usedDays = existingBalance?.usedDays ?? 0;
         if (Number(usedDays) + Number(request.daysCount) > Number(totalDays)) {
           throw new ConflictException(
             'Zile de concediu insuficiente în sold pentru această perioadă.',
           );
         }
-      }
 
-      if (existingBalance) {
-        await tx.leaveBalance.update({
-          where: { id: existingBalance.id },
-          data: { usedDays: { increment: request.daysCount } },
-        });
-      } else {
-        await tx.leaveBalance.create({
-          data: {
-            companyId: request.companyId,
-            employeeId: request.employeeId,
-            leaveTypeId: request.leaveTypeId,
-            year,
-            totalDays: request.leaveType.defaultDaysPerYear ?? 0,
-            usedDays: request.daysCount,
-          },
-        });
+        if (existingBalance) {
+          await tx.leaveBalance.update({
+            where: { id: existingBalance.id },
+            data: { usedDays: { increment: request.daysCount } },
+          });
+        } else {
+          await tx.leaveBalance.create({
+            data: {
+              companyId: request.companyId,
+              employeeId: request.employeeId,
+              leaveTypeId: request.leaveTypeId,
+              year,
+              totalDays,
+              usedDays: request.daysCount,
+            },
+          });
+        }
       }
 
       return tx.leaveRequest.update({
