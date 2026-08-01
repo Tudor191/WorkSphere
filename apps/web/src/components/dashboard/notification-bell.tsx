@@ -40,10 +40,15 @@ export function NotificationBell() {
   const markAllRead = useMarkAllNotificationsRead();
   const registerDeviceToken = useRegisterDeviceToken();
   const [pushEnabled, setPushEnabled] = React.useState(false);
+  const [pushError, setPushError] = React.useState<string | null>(null);
 
   const unreadCount = unread?.count ?? 0;
-  const canOfferPush =
-    isPushConfigured && isPushSupportedByBrowser() && typeof window !== 'undefined' && Notification.permission !== 'granted';
+  // Deliberat NU verificăm și `Notification.permission !== 'granted'` aici —
+  // permisiunea browserului acordată nu înseamnă că am reușit vreodată să
+  // obținem și să înregistrăm un token FCM valid (poate eșua independent,
+  // ex. probleme de configurare Firebase). Butonul rămâne disponibil ca să
+  // poată fi reîncercat, indiferent de starea permisiunii.
+  const canOfferPush = isPushConfigured && isPushSupportedByBrowser();
 
   React.useEffect(() => {
     return onForegroundPush(() => {
@@ -53,10 +58,19 @@ export function NotificationBell() {
   }, []);
 
   const enablePush = async () => {
-    const token = await requestPushToken();
-    if (token) {
-      await registerDeviceToken.mutateAsync({ fcmToken: token, platform: 'web' });
-      setPushEnabled(true);
+    setPushError(null);
+    try {
+      const token = await requestPushToken();
+      if (token) {
+        await registerDeviceToken.mutateAsync({ fcmToken: token, platform: 'web' });
+        setPushEnabled(true);
+      } else {
+        setPushError(
+          'Ai refuzat permisiunea de notificări a browserului — activeaz-o din setările site-ului dacă te răzgândești.',
+        );
+      }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Eroare la activarea notificărilor push.');
     }
   };
 
@@ -89,10 +103,20 @@ export function NotificationBell() {
 
         {canOfferPush && !pushEnabled && (
           <>
-            <DropdownMenuItem onClick={enablePush} className="gap-2">
+            <DropdownMenuItem
+              onSelect={(e) => {
+                // Previne închiderea automată a meniului (comportamentul
+                // implicit Radix la selecție) — altfel mesajul de eroare de
+                // mai jos n-ar mai apuca să fie văzut niciodată.
+                e.preventDefault();
+                enablePush();
+              }}
+              className="gap-2"
+            >
               <BellRing className="h-4 w-4" />
               Activează notificările push
             </DropdownMenuItem>
+            {pushError && <p className="px-2 pb-2 text-xs text-destructive">{pushError}</p>}
             <DropdownMenuSeparator />
           </>
         )}

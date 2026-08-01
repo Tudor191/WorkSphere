@@ -44,11 +44,21 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
 
 /**
  * Cere permisiunea de notificări browser-ului și, dacă acordată, întoarce
- * un token FCM de înregistrat pe server. `null` dacă push-ul nu e
- * configurat, nu e suportat de browser, sau userul refuză permisiunea.
+ * un token FCM de înregistrat pe server. `null` STRICT dacă userul refuză
+ * permisiunea — orice altă condiție care împiedică activarea (config
+ * lipsă, browser nesuportat) aruncă o eroare explicită, ca butonul din UI
+ * să nu pară că "nu face nimic" quando de fapt lipsește o variabilă de
+ * mediu.
  */
 export async function requestPushToken(): Promise<string | null> {
-  if (!isPushConfigured || !isPushSupportedByBrowser()) return null;
+  if (!isPushConfigured) {
+    throw new Error(
+      'Configurare Firebase incompletă — verifică variabilele NEXT_PUBLIC_FIREBASE_* (inclusiv VAPID key) din apps/web/.env, apoi repornește pnpm dev.',
+    );
+  }
+  if (!isPushSupportedByBrowser()) {
+    throw new Error('Browserul acesta nu suportă notificări push.');
+  }
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return null;
