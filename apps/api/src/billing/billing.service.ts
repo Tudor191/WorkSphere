@@ -200,8 +200,14 @@ export class BillingService {
     const periodStartUnix = item?.current_period_start ?? legacyPeriod.current_period_start;
     const periodEndUnix = item?.current_period_end ?? legacyPeriod.current_period_end;
 
-    await TenantContext.runAsBypass(() =>
-      this.prisma.tenantScoped.subscription.update({
+    // `updateMany` în loc de `update` — nu aruncă dacă 0 rânduri se
+    // potrivesc (spre deosebire de `update`, care ar arunca P2025 exact
+    // aici dacă `companyId` rezolvat nu se potrivește cu niciun rând, sau
+    // dacă RLS l-ar filtra din alt motiv). Logăm explicit rezultatul, ca
+    // să distingem clar "nu s-a găsit nimic" de o reușită reală, în loc să
+    // lăsăm un webhook Stripe să pice cu 500 pe o eroare opacă.
+    const { count } = await TenantContext.runAsBypass(() =>
+      this.prisma.tenantScoped.subscription.updateMany({
         where: { companyId },
         data: {
           stripeSubscriptionId: stripeSubscription.id,
@@ -213,6 +219,11 @@ export class BillingService {
         },
       }),
     );
+    if (count === 0) {
+      this.logger.warn(
+        `Subscription Stripe ${stripeSubscription.id}: companyId rezolvat (${companyId}) nu se potrivește cu niciun rând din tabela subscriptions — verifică migrațiile RLS (WITH CHECK) sau datele.`,
+      );
+    }
   }
 
   private async onInvoiceEvent(invoice: Stripe.Invoice) {
