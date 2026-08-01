@@ -19,6 +19,13 @@ firebase.initializeApp({
   appId: params.get('appId'),
 });
 
+// Fără astea, un service worker nou instalat rămâne "waiting" (inactiv)
+// până se închid TOATE tab-urile deschise ale aplicației — orice fix pus
+// aici (ex. eliminarea afișării duble de mai jos) n-ar prinde efect la un
+// simplu reload de pagină.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
 const messaging = firebase.messaging();
 
 // Payload STRICT `data` (fără `notification` la nivelul mesajului FCM) —
