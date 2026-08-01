@@ -212,6 +212,10 @@ model User {
   /// push) pentru mesaje noi de chat; restul tipurilor de notificări
   /// (concedii, task-uri etc.) nu sunt afectate.
   chatNotificationsEnabled Boolean @default(true)
+  /// implicit FALSE (spre deosebire de `chatNotificationsEnabled`) — SMS-ul
+  /// costă bani per mesaj, deci e strict opt-in; necesită și `phone` setat
+  /// ca să aibă vreun efect (vezi `NotificationsService.notify`).
+  smsNotificationsEnabled Boolean @default(false)
   twoFactorEnabled Boolean    @default(false)
   twoFactorSecret  String?
   lastLoginAt      DateTime?

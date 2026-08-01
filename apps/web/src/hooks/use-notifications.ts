@@ -67,7 +67,13 @@ export function useUnregisterDeviceToken() {
 
 export interface NotificationPreferences {
   chatNotificationsEnabled: boolean;
+  smsNotificationsEnabled: boolean;
+  phone: string | null;
 }
+
+export type UpdateNotificationPreferencesInput = Partial<
+  Pick<NotificationPreferences, 'chatNotificationsEnabled' | 'smsNotificationsEnabled'>
+>;
 
 /** `companyId` în queryKey — vezi comentariul din `use-employees.ts`. */
 export function useNotificationPreferences() {
@@ -83,7 +89,7 @@ export function useNotificationPreferences() {
 export function useUpdateNotificationPreferences() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: NotificationPreferences) =>
+    mutationFn: (input: UpdateNotificationPreferencesInput) =>
       apiFetch<NotificationPreferences>('/notifications/preferences', {
         method: 'PATCH',
         body: JSON.stringify(input),

@@ -3,6 +3,7 @@ import { Prisma } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { FirebaseService } from './firebase.service';
+import { TwilioService } from './twilio.service';
 import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 
@@ -11,6 +12,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly firebase: FirebaseService,
+    private readonly twilio: TwilioService,
   ) {}
 
   findMine(userId: string) {
@@ -58,7 +60,7 @@ export class NotificationsService {
   async getPreferences(userId: string) {
     const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { chatNotificationsEnabled: true },
+      select: { chatNotificationsEnabled: true, smsNotificationsEnabled: true, phone: true },
     });
     return user;
   }
@@ -66,8 +68,11 @@ export class NotificationsService {
   async updatePreferences(userId: string, dto: UpdateNotificationPreferencesDto) {
     return this.prisma.tenantScoped.user.update({
       where: { id: userId },
-      data: { chatNotificationsEnabled: dto.chatNotificationsEnabled },
-      select: { chatNotificationsEnabled: true },
+      data: {
+        chatNotificationsEnabled: dto.chatNotificationsEnabled,
+        smsNotificationsEnabled: dto.smsNotificationsEnabled,
+      },
+      select: { chatNotificationsEnabled: true, smsNotificationsEnabled: true, phone: true },
     });
   }
 
@@ -78,10 +83,22 @@ export class NotificationsService {
    * userului. Rulează sub contextul de tenant normal al cererii curente —
    * spre deosebire de webhook-ul Stripe, aici există deja un JWT
    * autentificat, deci niciun bypass nu e necesar.
+   *
+   * `allowSms`: SMS-ul costă bani per mesaj, spre deosebire de push — de
+   * aceea NU e încercat implicit pentru orice notificare, doar când
+   * apelantul marchează explicit evenimentul ca suficient de important
+   * (ex. respingerea unei cereri de concediu, nu un mesaj de chat).
+   * Necesită și `smsNotificationsEnabled` + un `phone` setat de user.
    */
   async notify(
     userId: string,
-    input: { type: string; title: string; body: string; metadata?: Record<string, unknown> },
+    input: {
+      type: string;
+      title: string;
+      body: string;
+      metadata?: Record<string, unknown>;
+      allowSms?: boolean;
+    },
   ) {
     const companyId = TenantContext.requireCompanyId();
     const notification = await this.prisma.tenantScoped.notification.create({
@@ -109,6 +126,16 @@ export class NotificationsService {
             where: { fcmToken: { in: invalidTokens } },
           });
         }
+      }
+    }
+
+    if (input.allowSms && this.twilio.isConfigured) {
+      const user = await this.prisma.tenantScoped.user.findUnique({
+        where: { id: userId },
+        select: { phone: true, smsNotificationsEnabled: true },
+      });
+      if (user?.phone && user.smsNotificationsEnabled) {
+        await this.twilio.sendSms(user.phone, `${input.title}: ${input.body}`);
       }
     }
 

@@ -88,8 +88,21 @@
    tokeni AI legat de plan (`aiCreditsPerMonth`), facturare anuală
    promovată explicit în UI (backend-ul o suportă deja prin
    `billingCycle`).
-3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
-   (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
+3. **Twilio SMS** — ✅ prima felie implementată: `TwilioService` (opțional,
+   la fel ca AI/Stripe/Firebase — necompletat = SMS dezactivat, restul
+   aplicației pornește normal). Cont personal Twilio (trial), decizie
+   temporară — se poate trece pe alt furnizor (Vonage, SMS.ro pentru cost
+   mai bun pe piața locală) fără să schimbe restul arhitecturii, doar
+   `TwilioService`. Userul își setează numărul de telefon din
+   `/dashboard/account` (format internațional, ex. `+40712345678`) și
+   activează explicit comutatorul „Notificări prin SMS" de acolo — opt-in
+   strict, implicit dezactivat (spre deosebire de push), pentru că SMS-ul
+   costă bani per mesaj. Primul (și singurul, deliberat) declanșator
+   cablat: aprobarea/respingerea unei cereri de concediu — nu și mesajele
+   de chat, prea frecvente ca să merite cost per SMS. Are nevoie de
+   `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` în mediul
+   API-ului. Rămâne pentru o felie următoare: cablarea altor declanșatoare
+   importante (dacă apar) și migrarea pe cont de firmă / alt furnizor.
 4. **Firebase Cloud Messaging (push)** — ✅ implementat și **confirmat
    funcțional** printr-o notificare push reală, primită de la un capăt la
    altul (respingere cerere de concediu → notificare în aplicație → push

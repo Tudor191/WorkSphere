@@ -38,6 +38,7 @@ interface AuthContextUser {
   email: string;
   firstName: string;
   lastName: string;
+  phone: string | null;
   companyId: string;
   companySlug: string;
   roleId: string;
@@ -104,6 +105,7 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
       companyId: user.companyId,
       companySlug: user.company.slug,
       roleId: user.roleId,
@@ -121,6 +123,7 @@ export class AuthService {
           ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
           ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
           ...(dto.email !== undefined ? { email: dto.email } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
         },
         include: { company: true, role: true },
       });
@@ -129,6 +132,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.company.slug,
         roleId: user.roleId,
@@ -291,6 +295,7 @@ export class AuthService {
         email: result.user.email,
         firstName: result.user.firstName,
         lastName: result.user.lastName,
+        phone: result.user.phone,
         companyId: result.company.id,
         companySlug: result.company.slug,
         roleId: result.user.roleId,
@@ -337,6 +342,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.company.slug,
         roleId: user.roleId,
@@ -386,6 +392,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.company.slug,
         roleId: user.roleId,

@@ -5,6 +5,7 @@ export class AuthUserDto {
   @ApiProperty() email!: string;
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
+  @ApiProperty({ nullable: true }) phone!: string | null;
   @ApiProperty() companyId!: string;
   @ApiProperty() companySlug!: string;
   @ApiProperty() role!: string;

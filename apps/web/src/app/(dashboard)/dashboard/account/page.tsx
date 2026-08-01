@@ -14,9 +14,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useChangePassword, useUpdateProfile } from '@/hooks/use-account';
 import { useCompany } from '@/hooks/use-company';
+import { useNotificationPreferences, useUpdateNotificationPreferences } from '@/hooks/use-notifications';
 import { useCreateCheckout, useCreatePortal, useSubscription, useUpdateSubscription } from '@/hooks/use-subscription';
 import { ApiError } from '@/lib/api-client';
 import type { SubscriptionPlan } from '@worksphere/shared-types';
@@ -32,6 +34,8 @@ export default function AccountSettingsPage() {
   const { data: company } = useCompany();
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
+  const { data: notificationPreferences } = useNotificationPreferences();
+  const updateNotificationPreferences = useUpdateNotificationPreferences();
   const {
     data: subscriptionData,
     isLoading: subscriptionLoading,
@@ -64,7 +68,7 @@ export default function AccountSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [profileForm, setProfileForm] = React.useState({ firstName: '', lastName: '', email: '' });
+  const [profileForm, setProfileForm] = React.useState({ firstName: '', lastName: '', email: '', phone: '' });
   const [profileMessage, setProfileMessage] = React.useState<string | null>(null);
   const [profileError, setProfileError] = React.useState<string | null>(null);
 
@@ -81,7 +85,12 @@ export default function AccountSettingsPage() {
 
   React.useEffect(() => {
     if (user) {
-      setProfileForm({ firstName: user.firstName, lastName: user.lastName, email: user.email });
+      setProfileForm({
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone ?? '',
+      });
     }
   }, [user]);
 
@@ -90,11 +99,24 @@ export default function AccountSettingsPage() {
     setProfileMessage(null);
     setProfileError(null);
     try {
-      await updateProfile.mutateAsync(profileForm);
+      await updateProfile.mutateAsync({
+        ...profileForm,
+        phone: profileForm.phone.trim() || undefined,
+      });
       await refreshProfile();
       setProfileMessage('Profil actualizat.');
     } catch (err) {
       setProfileError(err instanceof ApiError ? err.message : 'Eroare la salvare.');
+    }
+  };
+
+  const [smsError, setSmsError] = React.useState<string | null>(null);
+  const onToggleSms = async (checked: boolean) => {
+    setSmsError(null);
+    try {
+      await updateNotificationPreferences.mutateAsync({ smsNotificationsEnabled: checked });
+    } catch (err) {
+      setSmsError(err instanceof ApiError ? err.message : 'Eroare la salvarea preferinței.');
     }
   };
 
@@ -199,6 +221,18 @@ export default function AccountSettingsPage() {
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label>Telefon</Label>
+              <Input
+                type="tel"
+                placeholder="+40712345678"
+                value={profileForm.phone}
+                onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Format internațional (+40...) — necesar ca să poți primi notificări prin SMS.
+              </p>
+            </div>
 
             {profileMessage && <p className="text-sm text-success">{profileMessage}</p>}
             {profileError && <p className="text-sm text-destructive">{profileError}</p>}
@@ -207,6 +241,25 @@ export default function AccountSettingsPage() {
               {updateProfile.isPending ? 'Se salvează...' : 'Salvează profilul'}
             </Button>
           </form>
+
+          <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
+            <div>
+              <p className="text-sm font-medium">Notificări prin SMS</p>
+              <p className="text-xs text-muted-foreground">
+                {user?.phone
+                  ? 'Primești SMS pentru evenimente importante (ex. aprobare/respingere concediu).'
+                  : 'Setează mai întâi un număr de telefon mai sus ca să poți activa asta.'}
+              </p>
+            </div>
+            <Switch
+              checked={notificationPreferences?.smsNotificationsEnabled ?? false}
+              disabled={
+                !user?.phone || !notificationPreferences || updateNotificationPreferences.isPending
+              }
+              onCheckedChange={onToggleSms}
+            />
+          </div>
+          {smsError && <p className="mt-2 text-sm text-destructive">{smsError}</p>}
         </CardContent>
       </Card>
 

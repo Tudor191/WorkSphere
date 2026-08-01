@@ -27,6 +27,11 @@ export interface AppConfig {
     clientEmail: string;
     privateKey: string;
   };
+  twilio: {
+    accountSid: string;
+    authToken: string;
+    fromNumber: string;
+  };
   frontendUrl: string;
 }
 
@@ -73,6 +78,13 @@ export default (): { app: AppConfig } => ({
       // Cheia privată vine din JSON-ul de service account, cu `\n` literali
       // în variabila de mediu — trebuie convertiți înapoi în linii noi reale.
       privateKey: (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
+    },
+    twilio: {
+      // Necompletat = SMS dezactivat (vezi TwilioService) — la fel ca la
+      // celelalte integrări opționale, pornirea aplicației nu depinde de asta.
+      accountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
+      authToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+      fromNumber: process.env.TWILIO_FROM_NUMBER ?? '',
     },
     frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   },

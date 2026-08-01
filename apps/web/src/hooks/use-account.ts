@@ -6,6 +6,7 @@ export interface UpdateProfileInput {
   firstName?: string;
   lastName?: string;
   email?: string;
+  phone?: string;
 }
 
 export function useUpdateProfile() {

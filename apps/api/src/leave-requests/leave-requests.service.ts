@@ -252,7 +252,10 @@ export class LeaveRequestsService {
         select: { userId: true },
       });
       if (employee) {
-        await this.notifications.notify(employee.userId, input);
+        // allowSms: aprobarea/respingerea unei cereri de concediu e
+        // suficient de importantă (și rară) încât să merite un SMS, spre
+        // deosebire de ex. un mesaj de chat (vezi ChatService).
+        await this.notifications.notify(employee.userId, { ...input, allowSms: true });
       }
     } catch {
       // eșecul de notificare nu trebuie să strice fluxul de aprobare/respingere

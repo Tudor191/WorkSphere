@@ -97,6 +97,7 @@ export class AuthController {
       email: profile.email,
       firstName: profile.firstName,
       lastName: profile.lastName,
+      phone: profile.phone,
       companyId: profile.companyId,
       companySlug: profile.companySlug,
       role: profile.roleName,
@@ -117,6 +118,7 @@ export class AuthController {
       email: profile.email,
       firstName: profile.firstName,
       lastName: profile.lastName,
+      phone: profile.phone,
       companyId: profile.companyId,
       companySlug: profile.companySlug,
       role: profile.roleName,
@@ -188,6 +190,7 @@ export class AuthController {
       email: string;
       firstName: string;
       lastName: string;
+      phone: string | null;
       companyId: string;
       companySlug: string;
       roleName: string;
@@ -201,6 +204,7 @@ export class AuthController {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.companySlug,
         role: user.roleName,
