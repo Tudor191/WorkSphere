@@ -52,6 +52,8 @@ interface AuthContextUser {
   roleId: string;
   roleName: string;
   mustChangePassword: boolean;
+  /** false pentru un cont creat exclusiv prin Google — UI-ul de ștergere cont adaptează confirmarea cerută (parolă vs. simplu "ești sigur?"). */
+  hasPassword: boolean;
 }
 
 type AuthResult = { tokens: IssuedTokens; user: AuthContextUser };
@@ -159,6 +161,7 @@ export class AuthService {
       roleId: user.roleId,
       roleName: user.role.name,
       mustChangePassword: user.mustChangePassword,
+      hasPassword: Boolean(user.passwordHash),
     };
   }
 
@@ -186,6 +189,7 @@ export class AuthService {
         roleId: user.roleId,
         roleName: user.role.name,
         mustChangePassword: user.mustChangePassword,
+        hasPassword: Boolean(user.passwordHash),
       };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -476,6 +480,7 @@ export class AuthService {
         roleId: result.user.roleId,
         roleName: result.roleName,
         mustChangePassword: result.user.mustChangePassword,
+        hasPassword: Boolean(result.user.passwordHash),
       },
     };
   }
@@ -523,6 +528,7 @@ export class AuthService {
         roleId: user.roleId,
         roleName: user.role.name,
         mustChangePassword: user.mustChangePassword,
+        hasPassword: Boolean(user.passwordHash),
       },
     };
   }
@@ -573,6 +579,7 @@ export class AuthService {
         roleId: user.roleId,
         roleName: user.role.name,
         mustChangePassword: user.mustChangePassword,
+        hasPassword: Boolean(user.passwordHash),
       },
     };
   }

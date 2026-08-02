@@ -57,6 +57,7 @@ export interface AuthUser {
   companySlug: string;
   role: string;
   mustChangePassword: boolean;
+  hasPassword: boolean;
 }
 
 export interface AuthResponse {

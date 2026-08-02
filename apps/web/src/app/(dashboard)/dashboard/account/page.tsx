@@ -78,7 +78,6 @@ export default function AccountSettingsPage() {
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
 
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [deleteEmailInput, setDeleteEmailInput] = React.useState('');
   const [deletePasswordInput, setDeletePasswordInput] = React.useState('');
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [deleteSuccessMessage, setDeleteSuccessMessage] = React.useState<string | null>(null);
@@ -392,7 +391,6 @@ export default function AccountSettingsPage() {
         onOpenChange={(open) => {
           setDeleteOpen(open);
           if (!open && !deleteSuccessMessage) {
-            setDeleteEmailInput('');
             setDeletePasswordInput('');
             setDeleteError(null);
           }
@@ -404,22 +402,11 @@ export default function AccountSettingsPage() {
           </DialogHeader>
           {deleteSuccessMessage ? (
             <p className="text-sm text-success">{deleteSuccessMessage}</p>
-          ) : (
+          ) : user?.hasPassword ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Această acțiune este ireversibilă. Pentru a confirma, scrie adresa ta de email:{' '}
-                <span className="font-mono font-medium">{user?.email}</span>
+                Această acțiune este ireversibilă. Introdu parola contului ca să confirmi.
               </p>
-              <div className="space-y-2">
-                <Label htmlFor="delete-email">Email-ul contului tău</Label>
-                <Input
-                  id="delete-email"
-                  autoComplete="off"
-                  value={deleteEmailInput}
-                  onChange={(e) => setDeleteEmailInput(e.target.value)}
-                  placeholder="scrie emailul contului tău"
-                />
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="delete-password">Parola curentă</Label>
                 <Input
@@ -428,9 +415,16 @@ export default function AccountSettingsPage() {
                   autoComplete="off"
                   value={deletePasswordInput}
                   onChange={(e) => setDeletePasswordInput(e.target.value)}
-                  placeholder="lasă gol dacă te-ai autentificat doar prin Google"
+                  autoFocus
                 />
               </div>
+              {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Ești sigur că vrei să-ți ștergi contul? Această acțiune este ireversibilă.
+              </p>
               {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
             </>
           )}
@@ -442,7 +436,7 @@ export default function AccountSettingsPage() {
                 </Button>
                 <Button
                   variant="destructive"
-                  disabled={deleteEmailInput !== user?.email || deleteAccount.isPending}
+                  disabled={(user?.hasPassword && !deletePasswordInput) || deleteAccount.isPending}
                   onClick={onConfirmDeleteAccount}
                 >
                   {deleteAccount.isPending ? 'Se șterge...' : 'Da, șterge-mi contul definitiv'}

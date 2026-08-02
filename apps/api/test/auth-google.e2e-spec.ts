@@ -61,6 +61,9 @@ describe('Autentificare prin Google (e2e)', () => {
     expect(result.user.email).toBe(profile.email);
     expect(result.user.roleName).toBe('Admin');
     expect(typeof result.tokens.accessToken).toBe('string');
+    // Fără parolă setată — UI-ul de ștergere cont trebuie să știe asta
+    // (confirmare simplă "ești sigur?", nu cere o parolă inexistentă).
+    expect(result.user.hasPassword).toBe(false);
 
     // Reautentificarea prin Google cu același email acum reușește direct
     // (contul există deja) — nu mai cere numele companiei a doua oară.
@@ -108,5 +111,7 @@ describe('Autentificare prin Google (e2e)', () => {
     expect(result.kind).toBe('authenticated');
     if (result.kind !== 'authenticated') throw new Error('unreachable');
     expect(result.user.email).toBe(email);
+    // Contul are parolă (creat prin register clasic) — legarea Google nu o elimină.
+    expect(result.user.hasPassword).toBe(true);
   });
 });

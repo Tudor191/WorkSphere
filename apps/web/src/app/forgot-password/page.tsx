@@ -38,8 +38,8 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      title="Ai uitat parola?"
-      description="Introdu emailul contului tău — dacă există, primești un link de resetare."
+      title={sent ? 'Email trimis' : 'Ai uitat parola?'}
+      description={sent ? undefined : 'Introdu emailul contului tău — dacă există, primești un link de resetare.'}
       footer={
         <>
           Ți-ai amintit parola?{' '}

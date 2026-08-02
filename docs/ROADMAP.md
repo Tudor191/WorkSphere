@@ -81,8 +81,10 @@
   preferință de chat.
 - `/dashboard/account` — profil propriu, schimbare parolă, plan/abonament
   (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată,
-  zonă periculoasă cu ștergere cont propriu (confirmare prin tastarea
-  emailului + parola curentă).
+  zonă periculoasă cu ștergere cont propriu — cere parola curentă (contul
+  e deja autentificat, nu mai cere și emailul), sau, pentru un cont creat
+  exclusiv prin Google (fără parolă), doar o confirmare simplă "ești
+  sigur?".
 - `/account-deletion/confirm` — pagină publică (fără autentificare, contul
   demis nu se mai poate loga) pentru accelerarea ștergerii unui cont demis,
   din link-ul primit prin email (email + parolă + cod).

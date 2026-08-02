@@ -126,6 +126,7 @@ export class AuthController {
       companySlug: profile.companySlug,
       role: profile.roleName,
       mustChangePassword: profile.mustChangePassword,
+      hasPassword: profile.hasPassword,
     };
   }
 
@@ -147,6 +148,7 @@ export class AuthController {
       companySlug: profile.companySlug,
       role: profile.roleName,
       mustChangePassword: profile.mustChangePassword,
+      hasPassword: profile.hasPassword,
     };
   }
 
@@ -265,6 +267,7 @@ export class AuthController {
       companySlug: string;
       roleName: string;
       mustChangePassword: boolean;
+      hasPassword: boolean;
     },
   ): AuthResponseDto {
     return {
@@ -279,6 +282,7 @@ export class AuthController {
         companySlug: user.companySlug,
         role: user.roleName,
         mustChangePassword: user.mustChangePassword,
+        hasPassword: user.hasPassword,
       },
     };
   }
