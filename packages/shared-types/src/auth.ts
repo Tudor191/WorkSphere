@@ -24,9 +24,11 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
+  phone: string | null;
   companyId: string;
   companySlug: string;
   role: string;
+  mustChangePassword: boolean;
 }
 
 export interface AuthResponse {

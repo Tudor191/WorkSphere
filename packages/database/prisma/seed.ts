@@ -176,10 +176,36 @@ async function seedDemoCompany() {
   console.log(`  parolă: ${process.env.SEED_ADMIN_PASSWORD ?? 'Demo1234!'} (schimbă în producție)`);
 }
 
+/**
+ * Contul de developer/platformă — complet separat de conturile de companie
+ * (`User`), vezi `PlatformAdminModule`. Nu are `companyId` și nu apare
+ * niciodată în datele unei firme; e singurul cont care supraviețuiește unui
+ * „hard reset” (care șterge doar rândurile din `companies`, în cascadă).
+ */
+async function seedPlatformAdmin() {
+  const email = process.env.SEED_PLATFORM_ADMIN_EMAIL ?? 'dev@worksphere.ro';
+  const existing = await prisma.platformAdmin.findUnique({ where: { email } });
+  if (existing) {
+    console.log('Contul de developer există deja — sar peste crearea lui.');
+    return;
+  }
+
+  const password = process.env.SEED_PLATFORM_ADMIN_PASSWORD ?? 'DevReset1234!';
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.platformAdmin.create({
+    data: { email, passwordHash, firstName: 'Cont', lastName: 'Developer' },
+  });
+
+  console.log('Cont de developer creat:');
+  console.log(`  email: ${email}`);
+  console.log(`  parolă: ${password} (schimbă în producție)`);
+}
+
 async function main() {
   await seedPermissionCatalog();
   await seedSubscriptionPlans();
   await seedDemoCompany();
+  await seedPlatformAdmin();
 }
 
 main()

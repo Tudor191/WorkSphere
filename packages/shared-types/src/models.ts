@@ -115,3 +115,149 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   employee?: Employee;
 }
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  slug: string;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  currency: string;
+  maxEmployees: number;
+  features: { modules: string[]; aiCreditsPerMonth: number };
+  isActive: boolean;
+}
+
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
+export type BillingCycle = 'MONTHLY' | 'YEARLY';
+
+export interface Subscription {
+  id: string;
+  companyId: string;
+  planId: string;
+  status: SubscriptionStatus;
+  billingCycle: BillingCycle;
+  stripeCustomerId: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  plan: SubscriptionPlan;
+}
+
+export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELED';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface Project {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  startDate: string | null;
+  deadline: string | null;
+  createdAt: string;
+  _count?: { tasks: number };
+  tasks?: Task[];
+}
+
+export interface Task {
+  id: string;
+  companyId: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigneeId: string | null;
+  createdById: string;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: SafeUser | null;
+  createdBy?: SafeUser;
+  project?: { id: string; name: string } | null;
+}
+
+export interface Client {
+  id: string;
+  companyId: string;
+  name: string;
+  cui: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  ownerId: string | null;
+  createdAt: string;
+  owner?: SafeUser | null;
+  _count?: { tasks: number; notes: number; projects: number };
+}
+
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+
+export interface Lead {
+  id: string;
+  companyId: string;
+  name: string;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+  status: LeadStatus;
+  valueCents: number | null;
+  ownerId: string | null;
+  pipelineStageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  owner?: SafeUser | null;
+}
+
+export interface Product {
+  id: string;
+  companyId: string;
+  name: string;
+  sku: string;
+  barcode: string | null;
+  qrCode: string | null;
+  category: string | null;
+  unitPriceCents: number;
+  currency: string;
+  unit: string;
+  stockQuantity: string;
+  minStockAlert: string | null;
+  createdAt: string;
+  stockMovements?: StockMovement[];
+}
+
+export type StockMovementType = 'IN' | 'OUT';
+
+export interface StockMovement {
+  id: string;
+  companyId: string;
+  productId: string;
+  type: StockMovementType;
+  quantity: string;
+  reason: string | null;
+  performedById: string;
+  createdAt: string;
+  product?: { id: string; name: string; sku: string; unit: string };
+}
+
+export interface ChatChannel {
+  id: string;
+  companyId: string;
+  name: string;
+  isPrivate: boolean;
+  createdAt: string;
+  _count?: { messages: number; members: number };
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  authorId: string;
+  content: string;
+  editedAt: string | null;
+  createdAt: string;
+  author: SafeUser;
+}

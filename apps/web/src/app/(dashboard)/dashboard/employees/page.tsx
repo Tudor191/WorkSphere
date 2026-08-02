@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   Dialog,
   DialogContent,
@@ -16,10 +17,30 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateEmployee, useEmployees } from '@/hooks/use-employees';
+import {
+  useCreateEmployee,
+  useDeleteEmployee,
+  useEmployees,
+  useHardDeleteEmployee,
+  useUpdateEmployeeRole,
+} from '@/hooks/use-employees';
 import { useRoles } from '@/hooks/use-roles';
 import { useDepartments } from '@/hooks/use-departments';
+import { useAuth } from '@/components/providers/auth-provider';
 import { ApiError } from '@/lib/api-client';
+import { ROLE_INFO, ROLE_ORDER, roleLabelRo, type Employee, type Role } from '@worksphere/shared-types';
+
+/** Radix Select nu acceptă `value=""` pe un item — sentinelă pentru "fără departament". */
+const NO_DEPARTMENT = '__none__';
+
+function sortByHierarchy(roles: Role[] | undefined): Role[] {
+  if (!roles) return [];
+  return [...roles].sort((a, b) => {
+    const ai = a.systemKey ? ROLE_ORDER.indexOf(a.systemKey as (typeof ROLE_ORDER)[number]) : 99;
+    const bi = b.systemKey ? ROLE_ORDER.indexOf(b.systemKey as (typeof ROLE_ORDER)[number]) : 99;
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+}
 
 const statusVariant: Record<string, 'success' | 'warning' | 'secondary'> = {
   ACTIVE: 'success',
@@ -32,10 +53,28 @@ export default function EmployeesPage() {
   const { data: roles } = useRoles();
   const { data: departments } = useDepartments();
   const createEmployee = useCreateEmployee();
+  const deleteEmployee = useDeleteEmployee();
+  const hardDeleteEmployee = useHardDeleteEmployee();
+  const updateEmployeeRole = useUpdateEmployeeRole();
+  const { user } = useAuth();
+
+  const sortedRoles = React.useMemo(() => sortByHierarchy(roles), [roles]);
+  const roleById = React.useMemo(() => new Map(roles?.map((r) => [r.id, r])), [roles]);
 
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successPassword, setSuccessPassword] = React.useState<string | null>(null);
+  const [toRemove, setToRemove] = React.useState<Employee | null>(null);
+  const [removeError, setRemoveError] = React.useState<string | null>(null);
+  const [toHardDelete, setToHardDelete] = React.useState<Employee | null>(null);
+  const [hardDeleteError, setHardDeleteError] = React.useState<string | null>(null);
+  const [toPromote, setToPromote] = React.useState<Employee | null>(null);
+  const [promoteForm, setPromoteForm] = React.useState({
+    position: '',
+    roleId: '',
+    departmentId: '',
+  });
+  const [promoteError, setPromoteError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({
     email: '',
     firstName: '',
@@ -67,6 +106,54 @@ export default function EmployeesPage() {
       resetForm();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Eroare la crearea angajatului.');
+    }
+  };
+
+  const confirmRemove = async () => {
+    if (!toRemove) return;
+    setRemoveError(null);
+    try {
+      await deleteEmployee.mutateAsync(toRemove.id);
+      setToRemove(null);
+    } catch (err) {
+      setRemoveError(err instanceof ApiError ? err.message : 'Eroare la demiterea angajatului.');
+    }
+  };
+
+  const confirmHardDelete = async () => {
+    if (!toHardDelete) return;
+    setHardDeleteError(null);
+    try {
+      await hardDeleteEmployee.mutateAsync(toHardDelete.id);
+      setToHardDelete(null);
+    } catch (err) {
+      setHardDeleteError(err instanceof ApiError ? err.message : 'Eroare la ștergerea definitivă.');
+    }
+  };
+
+  const openPromote = (emp: Employee) => {
+    setPromoteError(null);
+    setPromoteForm({
+      position: emp.position,
+      roleId: emp.user.roleId,
+      departmentId: emp.departmentId ?? NO_DEPARTMENT,
+    });
+    setToPromote(emp);
+  };
+
+  const confirmPromote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!toPromote) return;
+    setPromoteError(null);
+    try {
+      await updateEmployeeRole.mutateAsync({
+        id: toPromote.id,
+        ...promoteForm,
+        departmentId: promoteForm.departmentId === NO_DEPARTMENT ? null : promoteForm.departmentId,
+      });
+      setToPromote(null);
+    } catch (err) {
+      setPromoteError(err instanceof ApiError ? err.message : 'Eroare la actualizarea angajatului.');
     }
   };
 
@@ -138,9 +225,9 @@ export default function EmployeesPage() {
                         <SelectValue placeholder="Alege rolul" />
                       </SelectTrigger>
                       <SelectContent>
-                        {roles?.map((r) => (
+                        {sortedRoles.map((r) => (
                           <SelectItem key={r.id} value={r.id}>
-                            {r.name}
+                            {roleLabelRo(r.systemKey, r.name)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -180,6 +267,30 @@ export default function EmployeesPage() {
         </Dialog>
       </div>
 
+      <Card className="px-6">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="roles-faq" className="border-b-0">
+            <AccordionTrigger>Ce înseamnă fiecare rol?</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                {ROLE_ORDER.map((key) => (
+                  <div key={key} className="flex items-start gap-3">
+                    <Badge variant="secondary" className="mt-0.5 shrink-0">
+                      {ROLE_INFO[key].labelRo}
+                    </Badge>
+                    <p>{ROLE_INFO[key].descriptionRo}</p>
+                  </div>
+                ))}
+                <p className="pt-1 text-xs">
+                  Momentan sunt 5 roluri fixe, aceleași pentru toate companiile — roluri
+                  personalizate, definite de fiecare companie, urmează într-o etapă viitoare.
+                </p>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Card>
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -188,21 +299,23 @@ export default function EmployeesPage() {
                 <th className="px-6 py-3 font-medium">Nume</th>
                 <th className="px-6 py-3 font-medium">Cod</th>
                 <th className="px-6 py-3 font-medium">Funcție</th>
+                <th className="px-6 py-3 font-medium">Rol</th>
                 <th className="px-6 py-3 font-medium">Departament</th>
                 <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     Se încarcă...
                   </td>
                 </tr>
               )}
               {!isLoading && employees?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     Niciun angajat încă. Adaugă primul angajat din butonul de mai sus.
                   </td>
                 </tr>
@@ -215,9 +328,50 @@ export default function EmployeesPage() {
                   </td>
                   <td className="px-6 py-3 text-muted-foreground">{emp.employeeCode}</td>
                   <td className="px-6 py-3">{emp.position}</td>
+                  <td className="px-6 py-3 text-muted-foreground">
+                    {roleLabelRo(roleById.get(emp.user.roleId)?.systemKey)}
+                  </td>
                   <td className="px-6 py-3 text-muted-foreground">{emp.department?.name ?? '—'}</td>
                   <td className="px-6 py-3">
                     <Badge variant={statusVariant[emp.user.status] ?? 'secondary'}>{emp.user.status}</Badge>
+                  </td>
+                  <td className="px-6 py-3 text-right">
+                    {emp.user.status !== 'SUSPENDED' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Editează rol / funcție"
+                        onClick={() => openPromote(emp)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {emp.user.status !== 'SUSPENDED' && emp.userId !== user?.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Demite angajat"
+                        onClick={() => {
+                          setRemoveError(null);
+                          setToRemove(emp);
+                        }}
+                      >
+                        <UserX className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                    {emp.user.status === 'SUSPENDED' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Șterge definitiv"
+                        onClick={() => {
+                          setHardDeleteError(null);
+                          setToHardDelete(emp);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -225,6 +379,129 @@ export default function EmployeesPage() {
           </table>
         </div>
       </Card>
+
+      <Dialog open={!!toRemove} onOpenChange={(v) => !v && setToRemove(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Demite angajat</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Ești sigur că vrei să-l demiți pe{' '}
+            <span className="font-medium text-foreground">
+              {toRemove?.user.firstName} {toRemove?.user.lastName}
+            </span>
+            ? Fișa HR și istoricul (pontaj, concedii) rămân, dar contul nu se va mai putea autentifica.
+          </p>
+          {removeError && <p className="text-sm text-destructive">{removeError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToRemove(null)}>
+              Anulează
+            </Button>
+            <Button variant="destructive" disabled={deleteEmployee.isPending} onClick={confirmRemove}>
+              {deleteEmployee.isPending ? 'Se demite...' : 'Demite'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!toHardDelete} onOpenChange={(v) => !v && setToHardDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Șterge definitiv contul</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Contul lui{' '}
+            <span className="font-medium text-foreground">
+              {toHardDelete?.user.firstName} {toHardDelete?.user.lastName}
+            </span>{' '}
+            va fi șters ireversibil din baza de date — fișa HR, istoricul de pontaj și cererile de
+            concediu dispar complet și nu mai pot fi recuperate. Singurul motiv să faci asta e ca
+            emailul <span className="font-medium text-foreground">{toHardDelete?.user.email}</span>{' '}
+            să poată fi folosit la un cont nou.
+          </p>
+          {hardDeleteError && <p className="text-sm text-destructive">{hardDeleteError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToHardDelete(null)}>
+              Anulează
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={hardDeleteEmployee.isPending}
+              onClick={confirmHardDelete}
+            >
+              {hardDeleteEmployee.isPending ? 'Se șterge...' : 'Șterge definitiv'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!toPromote} onOpenChange={(v) => !v && setToPromote(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Editează rol / funcție — {toPromote?.user.firstName} {toPromote?.user.lastName}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={confirmPromote} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Funcție</Label>
+              <Input
+                value={promoteForm.position}
+                onChange={(e) => setPromoteForm((f) => ({ ...f, position: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select
+                value={promoteForm.roleId}
+                onValueChange={(v) => setPromoteForm((f) => ({ ...f, roleId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Alege rolul" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {roleLabelRo(r.systemKey, r.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Departament</Label>
+              <Select
+                value={promoteForm.departmentId}
+                onValueChange={(v) => setPromoteForm((f) => ({ ...f, departmentId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Fără departament" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEPARTMENT}>Fără departament</SelectItem>
+                  {departments?.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {promoteError && <p className="text-sm text-destructive">{promoteError}</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setToPromote(null)}>
+                Anulează
+              </Button>
+              <Button type="submit" disabled={updateEmployeeRole.isPending}>
+                {updateEmployeeRole.isPending ? 'Se salvează...' : 'Salvează'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

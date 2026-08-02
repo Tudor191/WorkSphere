@@ -1,13 +1,27 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES, type SystemRole } from '@worksphere/database';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  Prisma,
+  SYSTEM_ROLES,
+  type SystemRole,
+} from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
 import { JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -24,10 +38,12 @@ interface AuthContextUser {
   email: string;
   firstName: string;
   lastName: string;
+  phone: string | null;
   companyId: string;
   companySlug: string;
   roleId: string;
   roleName: string;
+  mustChangePassword: boolean;
 }
 
 /**
@@ -89,11 +105,83 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
       companyId: user.companyId,
       companySlug: user.company.slug,
       roleId: user.roleId,
       roleName: user.role.name,
+      mustChangePassword: user.mustChangePassword,
     };
+  }
+
+  /** Actualizează nume/email pentru contul autentificat curent (nu necesită parola). */
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<AuthContextUser> {
+    try {
+      const user = await this.prisma.tenantScoped.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+          ...(dto.email !== undefined ? { email: dto.email } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        },
+        include: { company: true, role: true },
+      });
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        companyId: user.companyId,
+        companySlug: user.company.slug,
+        roleId: user.roleId,
+        roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Există deja un cont cu acest email.');
+      }
+      throw error;
+    }
+  }
+
+  /** Schimbă parola contului autentificat curent — necesită parola curentă corectă. */
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({ where: { id: userId } });
+    const currentMatches = user.passwordHash
+      ? await bcrypt.compare(dto.currentPassword, user.passwordHash)
+      : false;
+    if (!currentMatches) {
+      throw new UnauthorizedException('Parola curentă este incorectă.');
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.tenantScoped.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+  }
+
+  /**
+   * Ecranul obligatoriu de la prima autentificare cu o parolă temporară
+   * generată random (vezi EmployeesService.create). Nu cere parola curentă
+   * (utilizatorul tocmai s-a autentificat cu ea) — dar e utilizabil STRICT
+   * cât timp `mustChangePassword` e true, ca să nu devină o cale ocolitoare
+   * pentru schimbarea parolei fără a o cunoaște pe cea veche.
+   */
+  async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mustChangePassword) {
+      throw new ForbiddenException(
+        'Acest cont nu are o schimbare de parolă obligatorie — folosește schimbarea parolei din setările contului.',
+      );
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.tenantScoped.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
   }
 
   private async doRegister(
@@ -207,10 +295,12 @@ export class AuthService {
         email: result.user.email,
         firstName: result.user.firstName,
         lastName: result.user.lastName,
+        phone: result.user.phone,
         companyId: result.company.id,
         companySlug: result.company.slug,
         roleId: result.user.roleId,
         roleName: result.roleName,
+        mustChangePassword: result.user.mustChangePassword,
       },
     };
   }
@@ -252,10 +342,12 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.company.slug,
         roleId: user.roleId,
         roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -300,10 +392,12 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
         companyId: user.companyId,
         companySlug: user.company.slug,
         roleId: user.roleId,
         roleName: user.role.name,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }

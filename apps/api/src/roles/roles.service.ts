@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantContext } from '../common/tenant/tenant-context';
 
 @Injectable()
 export class RolesService {
@@ -7,6 +8,7 @@ export class RolesService {
 
   findAll() {
     return this.prisma.tenantScoped.role.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       select: { id: true, name: true, systemKey: true, isSystem: true },
       orderBy: { name: 'asc' },
     });

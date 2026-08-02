@@ -12,6 +12,17 @@ import { EmployeesModule } from './employees/employees.module';
 import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { RolesModule } from './roles/roles.module';
+import { PlatformAdminModule } from './platform-admin/platform-admin.module';
+import { ProjectsModule } from './projects/projects.module';
+import { TasksModule } from './tasks/tasks.module';
+import { ClientsModule } from './clients/clients.module';
+import { LeadsModule } from './leads/leads.module';
+import { ProductsModule } from './products/products.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
+import { ChatModule } from './chat/chat.module';
+import { AiModule } from './ai/ai.module';
+import { BillingModule } from './billing/billing.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
@@ -32,6 +43,17 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     LeaveRequestsModule,
     AttendanceModule,
     RolesModule,
+    PlatformAdminModule,
+    ProjectsModule,
+    TasksModule,
+    ClientsModule,
+    LeadsModule,
+    ProductsModule,
+    StockMovementsModule,
+    ChatModule,
+    AiModule,
+    BillingModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ValidationPipe },

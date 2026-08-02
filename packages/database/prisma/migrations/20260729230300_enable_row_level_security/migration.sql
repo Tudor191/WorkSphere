@@ -11,13 +11,21 @@
 --                                 fiecare acces (impus la nivel aplicație).
 --
 -- IMPORTANT (operațional): aceste politici NU se aplică conexiunilor făcute
--- cu un rol superuser (ex. `postgres`) — Postgres exceptează superuserii de
--- la RLS indiferent de FORCE ROW LEVEL SECURITY. În producție, aplicația
--- TREBUIE să se conecteze printr-un rol dedicat, non-superuser
--- (ex. `worksphere_app`), altfel RLS devine doar decorativ.
+-- cu un rol superuser (ex. `postgres`, sau `${POSTGRES_USER}` — bootstrap-ul
+-- oficial al imaginii Postgres) — Postgres exceptează superuserii de la RLS
+-- indiferent de FORCE ROW LEVEL SECURITY. Aplicația TREBUIE să se conecteze
+-- printr-un rol dedicat, non-superuser, non-bypassrls (`worksphere_app`).
 --
--- CREATE ROLE worksphere_app LOGIN PASSWORD '...';
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO worksphere_app;
+-- Acest rol NU se creează aici (migrarea rulează cu conexiunea de schema,
+-- care are nevoie de privilegii de superuser pentru CREATE POLICY etc. —
+-- nu invers). Provisioning-ul lui e în `docker/postgres/init-app-role.sh`,
+-- rulat automat de Postgres la primul boot al containerului. Pentru un
+-- volum deja existent care nu a trecut prin acel init (ex. creat înainte
+-- de introducerea scriptului), rulează manual o singură dată:
+--
+-- CREATE ROLE worksphere_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO worksphere_app;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO worksphere_app;
 
 -- Verifică dacă `current_setting(..., true)` e NULL => interzice implicit
 -- (fail-closed): dacă backend-ul uită să seteze contextul de tenant, orice

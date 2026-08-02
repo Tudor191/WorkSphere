@@ -12,6 +12,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { AuditLogEntity } from '../common/decorators/audit-log.decorator';
+import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -55,8 +56,17 @@ export class EmployeesController {
   @RequirePermission('employees:delete')
   @AuditLogEntity('Employee')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Dezactivează angajat' })
-  remove(@Param('id') id: string) {
-    return this.employeesService.remove(id);
+  @ApiOperation({ summary: 'Demite angajat' })
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.employeesService.remove(id, user.userId);
+  }
+
+  @Delete(':id/permanent')
+  @RequirePermission('employees:hard_delete')
+  @AuditLogEntity('Employee')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Șterge definitiv un cont deja demis (ireversibil)' })
+  hardDelete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.employeesService.hardDelete(id, user.userId);
   }
 }

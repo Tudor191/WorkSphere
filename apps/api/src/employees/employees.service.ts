@@ -1,5 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,14 +21,18 @@ export class EmployeesService {
 
   findAll() {
     return this.prisma.tenantScoped.employee.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: { user: { select: SAFE_USER_SELECT }, department: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { employeeCode: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const employee = await this.prisma.tenantScoped.employee.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const employee = await this.prisma.tenantScoped.employee.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: {
         user: { select: SAFE_USER_SELECT },
         department: true,
@@ -53,8 +62,19 @@ export class EmployeesService {
 
     try {
       const employee = await this.prisma.runInTenantTransaction(async (tx) => {
-        const employeeCount = await tx.employee.count({ where: { companyId } });
-        const employeeCode = `EMP-${String(employeeCount + 1).padStart(4, '0')}`;
+        // NU folosi `count()` — de când există `hardDelete()`, numărul de
+        // angajați poate SCĂDEA (un cont șters definitiv nu se mai numără),
+        // deci count+1 poate coincide cu un cod deja folosit de un angajat
+        // rămas cu un număr mai mare (ex: șterge EMP-0002 din 5, count
+        // devine 4, dar EMP-0005 tot există → coliziune). Codul următor
+        // trebuie să fie mereu mai mare decât cel mai mare cod EXISTENT.
+        const lastEmployee = await tx.employee.findFirst({
+          where: { companyId },
+          orderBy: { employeeCode: 'desc' },
+          select: { employeeCode: true },
+        });
+        const lastNumber = lastEmployee ? parseInt(lastEmployee.employeeCode.slice(4), 10) : 0;
+        const employeeCode = `EMP-${String(lastNumber + 1).padStart(4, '0')}`;
 
         const user = await tx.user.create({
           data: {
@@ -65,6 +85,7 @@ export class EmployeesService {
             lastName: dto.lastName,
             roleId: dto.roleId,
             status: 'ACTIVE',
+            mustChangePassword: true,
           },
         });
 
@@ -92,6 +113,13 @@ export class EmployeesService {
     }
   }
 
+  /**
+   * Folosit și pentru promovare/retrogradare (schimbare rol + funcție).
+   * Dacă angajatul e în prezent singurul Admin ACTIVE al companiei și
+   * `roleId` l-ar scoate din rolul de Admin, blocăm schimbarea — altfel
+   * compania rămâne fără niciun cont care poate gestiona roluri/angajați
+   * (nimeni nu ar mai putea repara greșeala, inclusiv persoana însăși).
+   */
   async update(id: string, dto: UpdateEmployeeDto) {
     const existing = await this.findOne(id);
     const {
@@ -104,6 +132,22 @@ export class EmployeesService {
       position,
       ...userFields
     } = dto;
+
+    if (roleId && roleId !== existing.user.roleId) {
+      const currentRole = await this.prisma.tenantScoped.role.findUnique({
+        where: { id: existing.user.roleId },
+      });
+      if (currentRole?.systemKey === 'ADMIN') {
+        const activeAdmins = await this.prisma.tenantScoped.user.count({
+          where: { status: 'ACTIVE', role: { systemKey: 'ADMIN' } },
+        });
+        if (activeAdmins <= 1) {
+          throw new ForbiddenException(
+            'Nu poți schimba rolul singurului Administrator activ al companiei — atribuie rolul de Administrator altcuiva mai întâi.',
+          );
+        }
+      }
+    }
 
     return this.prisma.runInTenantTransaction(async (tx) => {
       if (Object.keys(userFields).length > 0 || roleId) {
@@ -129,16 +173,91 @@ export class EmployeesService {
   }
 
   /**
-   * "Ștergere" = dezactivare (suspendare cont + închidere fișă HR), nu
-   * DELETE fizic — un angajat șters din greșeală sau plecat din companie
+   * "Ștergere" = demitere (suspendare cont + închidere fișă HR), nu
+   * DELETE fizic — un angajat demis din greșeală sau plecat din companie
    * trebuie să rămână în istoricul de audit/pontaj/concedii. Hard-delete
    * ar rupe integritatea rapoartelor istorice.
+   *
+   * Rangul rolului (Admin/Manager/etc.) nu contează aici — orice utilizator
+   * cu permisiunea `employees:delete` poate demite pe oricine, INDIFERENT
+   * de rol. Singurele două restricții: nu te poți demite pe tine însuți,
+   * și fondatorul companiei (primul angajat creat, la înregistrare) nu
+   * poate fi demis de altcineva — altfel un al doilea cont Admin ar
+   * putea bloca accesul fondatorului la propria companie.
    */
-  async remove(id: string) {
+  async remove(id: string, currentUserId: string) {
     const employee = await this.findOne(id);
+
+    if (employee.userId === currentUserId) {
+      throw new ForbiddenException('Nu te poți demite singur.');
+    }
+
+    const founder = await this.prisma.tenantScoped.employee.findFirst({
+      where: { companyId: TenantContext.requireCompanyId() },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (founder?.id === id) {
+      throw new ForbiddenException('Fondatorul companiei nu poate fi demis de alți utilizatori.');
+    }
+
     await this.prisma.runInTenantTransaction(async (tx) => {
       await tx.user.update({ where: { id: employee.userId }, data: { status: 'SUSPENDED' } });
       await tx.employee.update({ where: { id }, data: { endDate: new Date() } });
+    });
+  }
+
+  /**
+   * Ștergere definitivă (ireversibilă) din baza de date — spre deosebire de
+   * `remove()`, care doar suspendă. Necesară în special ca email-ul demis
+   * să poată fi refolosit la crearea unui cont nou (`email` e unic global,
+   * vezi schema `User`). Rezervată nivelurilor 4-5 (Manager/Admin) — vezi
+   * `RequirePermission('employees:hard_delete')` pe controller.
+   *
+   * Precondiție obligatorie: contul trebuie să fie DEJA suspendat (fluxul
+   * e mereu demite → apoi, separat, șterge definitiv — niciodată direct),
+   * ca un hard-delete accidental să nu fie la un click distanță pe un cont
+   * încă activ.
+   *
+   * Curăță explicit referințele opționale care nu au CASCADE în schemă
+   * (`LeaveRequest.approvedById`, `AuditLog.userId`) — altfel ștergerea ar
+   * eșua pe constrângere de FK pentru orice Manager/Admin care a aprobat
+   * vreodată o cerere sau a făcut vreo acțiune auditată. Modulele
+   * neimplementate încă (Documente, CRM, Proiecte, Chat) au propriile
+   * referințe fără CASCADE către User — nu sunt curățate aici pentru că
+   * azi nu pot conține date (nu există endpoint-uri care să scrie în ele);
+   * de revizuit când acele module devin funcționale.
+   */
+  async hardDelete(id: string, currentUserId: string) {
+    const employee = await this.findOne(id);
+
+    if (employee.userId === currentUserId) {
+      throw new ForbiddenException('Nu îți poți șterge propriul cont.');
+    }
+    if (employee.user.status !== 'SUSPENDED') {
+      throw new ConflictException(
+        'Contul trebuie demis (dezactivat) înainte de a putea fi șters definitiv.',
+      );
+    }
+
+    const founder = await this.prisma.tenantScoped.employee.findFirst({
+      where: { companyId: TenantContext.requireCompanyId() },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (founder?.id === id) {
+      throw new ForbiddenException('Fondatorul companiei nu poate fi șters.');
+    }
+
+    await this.prisma.runInTenantTransaction(async (tx) => {
+      await tx.leaveRequest.updateMany({
+        where: { approvedById: employee.userId },
+        data: { approvedById: null },
+      });
+      await tx.auditLog.updateMany({
+        where: { userId: employee.userId },
+        data: { userId: null },
+      });
+      await tx.employee.delete({ where: { id } });
+      await tx.user.delete({ where: { id: employee.userId } });
     });
   }
 }

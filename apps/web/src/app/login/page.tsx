@@ -18,6 +18,13 @@ export default function LoginPage() {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [sessionReplacedNotice, setSessionReplacedNotice] = React.useState(false);
+
+  React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('session') === 'replaced') {
+      setSessionReplacedNotice(true);
+    }
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +61,12 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {sessionReplacedNotice && (
+          <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            Ai fost deconectat pentru că într-o altă filă sau fereastră a browserului
+            te-ai autentificat cu alt cont. Autentifică-te din nou.
+          </p>
+        )}
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 
@@ -22,12 +23,37 @@ export function countBusinessDays(start: Date, end: Date): number {
   return count;
 }
 
+/**
+ * Determină dacă o cerere de concediu depășește soldul disponibil.
+ * `capped: false` dacă tipul de concediu nu are nicio limită configurată
+ * (nici sold explicit deja creat, nici `defaultDaysPerYear`) — un tip fără
+ * limită NU trebuie tratat ca având 0 zile disponibile (vezi ISSUES.md #26,
+ * cazul concediului medical, care în România nu se scade dintr-un plafon
+ * personal fix).
+ */
+export function checkLeaveBalanceCap(input: {
+  requestedDays: number;
+  usedDays: number;
+  existingTotalDays: number | null;
+  defaultDaysPerYear: number | null;
+}): { capped: boolean; exceeded: boolean; totalDays: number | null } {
+  const totalDays = input.existingTotalDays ?? input.defaultDaysPerYear;
+  if (totalDays === null || totalDays === undefined) {
+    return { capped: false, exceeded: false, totalDays: null };
+  }
+  return { capped: true, exceeded: input.usedDays + input.requestedDays > totalDays, totalDays };
+}
+
 @Injectable()
 export class LeaveRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   findAll() {
     return this.prisma.tenantScoped.leaveRequest.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: {
         employee: { include: { user: { select: SAFE_USER_SELECT } } },
         leaveType: true,
@@ -35,6 +61,14 @@ export class LeaveRequestsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** Pentru badge-ul de notificare din sidebar, vizibil doar celor care pot aproba. */
+  async countPending() {
+    const count = await this.prisma.tenantScoped.leaveRequest.count({
+      where: { companyId: TenantContext.requireCompanyId(), status: 'PENDING' },
+    });
+    return { count };
   }
 
   async findMine() {
@@ -48,7 +82,11 @@ export class LeaveRequestsService {
 
   async getBalances(employeeId: string) {
     return this.prisma.tenantScoped.leaveBalance.findMany({
-      where: { employeeId, year: new Date().getFullYear() },
+      where: {
+        companyId: TenantContext.requireCompanyId(),
+        employeeId,
+        year: new Date().getFullYear(),
+      },
       include: { leaveType: true },
     });
   }
@@ -56,6 +94,20 @@ export class LeaveRequestsService {
   async getMyBalances() {
     const employee = await this.requireCurrentEmployee();
     return this.getBalances(employee.id);
+  }
+
+  /**
+   * Lista tipurilor de concediu ale companiei (Concediu de odihnă, medical
+   * etc.) — separată de `getBalances`, care întoarce doar tipurile pentru
+   * care angajatul are deja un sold creat. Fără acest endpoint, un angajat
+   * nou (fără nicio cerere aprobată încă) nu are ce alege în formularul de
+   * cerere de concediu, pentru că soldul se creează abia la aprobare.
+   */
+  getLeaveTypes() {
+    return this.prisma.tenantScoped.leaveType.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async create(dto: CreateLeaveRequestDto) {
@@ -89,9 +141,12 @@ export class LeaveRequestsService {
    * neschimbat.
    */
   async approve(id: string, approvedById: string) {
-    return this.prisma.runInTenantTransaction(async (tx) => {
-      const request = await tx.leaveRequest.findUnique({
-        where: { id },
+    const updated = await this.prisma.runInTenantTransaction(async (tx) => {
+      // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+      // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+      // strat care împiedică accesul la un rând din altă companie.
+      const request = await tx.leaveRequest.findFirst({
+        where: { id, companyId: TenantContext.requireCompanyId() },
         include: { leaveType: true },
       });
       if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
@@ -110,32 +165,36 @@ export class LeaveRequestsService {
         },
       });
 
-      if (request.leaveType.isPaid) {
-        const totalDays = existingBalance?.totalDays ?? request.leaveType.defaultDaysPerYear ?? 0;
-        const usedDays = existingBalance?.usedDays ?? 0;
-        if (Number(usedDays) + Number(request.daysCount) > Number(totalDays)) {
+      const capCheck = checkLeaveBalanceCap({
+        requestedDays: Number(request.daysCount),
+        usedDays: Number(existingBalance?.usedDays ?? 0),
+        existingTotalDays: existingBalance ? Number(existingBalance.totalDays) : null,
+        defaultDaysPerYear: request.leaveType.defaultDaysPerYear,
+      });
+      if (capCheck.capped) {
+        if (capCheck.exceeded) {
           throw new ConflictException(
             'Zile de concediu insuficiente în sold pentru această perioadă.',
           );
         }
-      }
 
-      if (existingBalance) {
-        await tx.leaveBalance.update({
-          where: { id: existingBalance.id },
-          data: { usedDays: { increment: request.daysCount } },
-        });
-      } else {
-        await tx.leaveBalance.create({
-          data: {
-            companyId: request.companyId,
-            employeeId: request.employeeId,
-            leaveTypeId: request.leaveTypeId,
-            year,
-            totalDays: request.leaveType.defaultDaysPerYear ?? 0,
-            usedDays: request.daysCount,
-          },
-        });
+        if (existingBalance) {
+          await tx.leaveBalance.update({
+            where: { id: existingBalance.id },
+            data: { usedDays: { increment: request.daysCount } },
+          });
+        } else {
+          await tx.leaveBalance.create({
+            data: {
+              companyId: request.companyId,
+              employeeId: request.employeeId,
+              leaveTypeId: request.leaveTypeId,
+              year,
+              totalDays: capCheck.totalDays!,
+              usedDays: request.daysCount,
+            },
+          });
+        }
       }
 
       return tx.leaveRequest.update({
@@ -144,15 +203,27 @@ export class LeaveRequestsService {
         include: { leaveType: true },
       });
     });
+
+    await this.notifyEmployee(updated.employeeId, {
+      type: 'leave_request_approved',
+      title: 'Cerere de concediu aprobată',
+      body: `Cererea ta de concediu (${updated.leaveType.name}) a fost aprobată.`,
+    });
+    return updated;
   }
 
   async reject(id: string, approvedById: string, dto: RejectLeaveRequestDto) {
-    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const request = await this.prisma.tenantScoped.leaveRequest.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
+    });
     if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
     if (request.status !== 'PENDING') {
       throw new ConflictException('Doar cererile în așteptare pot fi respinse.');
     }
-    return this.prisma.tenantScoped.leaveRequest.update({
+    const updated = await this.prisma.tenantScoped.leaveRequest.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -161,11 +232,25 @@ export class LeaveRequestsService {
         rejectionReason: dto.rejectionReason,
       },
     });
+
+    await this.notifyEmployee(updated.employeeId, {
+      type: 'leave_request_rejected',
+      title: 'Cerere de concediu respinsă',
+      body: dto.rejectionReason
+        ? `Cererea ta de concediu a fost respinsă: ${dto.rejectionReason}`
+        : 'Cererea ta de concediu a fost respinsă.',
+    });
+    return updated;
   }
 
   async cancel(id: string) {
     const employee = await this.requireCurrentEmployee();
-    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const request = await this.prisma.tenantScoped.leaveRequest.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
+    });
     if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
     if (request.employeeId !== employee.id) {
       throw new ForbiddenException('Poți anula doar propriile cereri.');
@@ -188,5 +273,30 @@ export class LeaveRequestsService {
       throw new NotFoundException('Utilizatorul curent nu are o fișă de angajat asociată.');
     }
     return employee;
+  }
+
+  /**
+   * Notificarea e un bonus, nu o condiție de succes a aprobării/respingerii
+   * — orice eroare aici (ex. Firebase indisponibil) se loghează, nu se lasă
+   * să strice răspunsul către cel care a aprobat/respins cererea.
+   */
+  private async notifyEmployee(
+    employeeId: string,
+    input: { type: string; title: string; body: string },
+  ) {
+    try {
+      const employee = await this.prisma.tenantScoped.employee.findUnique({
+        where: { id: employeeId },
+        select: { userId: true },
+      });
+      if (employee) {
+        // allowSms: aprobarea/respingerea unei cereri de concediu e
+        // suficient de importantă (și rară) încât să merite un SMS, spre
+        // deosebire de ex. un mesaj de chat (vezi ChatService).
+        await this.notifications.notify(employee.userId, { ...input, allowSms: true });
+      }
+    } catch {
+      // eșecul de notificare nu trebuie să strice fluxul de aprobare/respingere
+    }
   }
 }

@@ -90,6 +90,7 @@ export class AttendanceService {
 
   findAll() {
     return this.prisma.tenantScoped.attendanceRecord.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: { employee: { include: { user: { select: SAFE_USER_SELECT } } } },
       orderBy: { checkInAt: 'desc' },
       take: 200,
@@ -102,7 +103,10 @@ export class AttendanceService {
     const startOfNextMonth = new Date(year, month, 1);
 
     const records = await this.prisma.tenantScoped.attendanceRecord.findMany({
-      where: { checkInAt: { gte: startOfMonth, lt: startOfNextMonth } },
+      where: {
+        companyId: TenantContext.requireCompanyId(),
+        checkInAt: { gte: startOfMonth, lt: startOfNextMonth },
+      },
       include: { employee: { include: { user: { select: SAFE_USER_SELECT } } } },
     });
 

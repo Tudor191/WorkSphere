@@ -19,8 +19,10 @@ import {
   useApproveLeaveRequest,
   useCreateLeaveRequest,
   useLeaveRequests,
+  useLeaveTypes,
   useMyLeaveBalances,
   useMyLeaveRequests,
+  usePendingLeaveRequestsCount,
   useRejectLeaveRequest,
 } from '@/hooks/use-leave-requests';
 import { ApiError } from '@/lib/api-client';
@@ -41,21 +43,40 @@ const statusLabel: Record<string, string> = {
 
 export default function LeaveRequestsPage() {
   const { data: balances } = useMyLeaveBalances();
+  const { data: leaveTypes } = useLeaveTypes();
   const { data: myRequests } = useMyLeaveRequests();
   const { data: allRequests, isError: allRequestsForbidden } = useLeaveRequests();
+  // dacă cererea asta eșuează (403), nu ai voie să aprobi — ascundem
+  // butoanele Aprobă/Respinge în loc să le lăsăm să eșueze silențios la clic.
+  const { isError: cannotApprove } = usePendingLeaveRequestsCount();
   const createRequest = useCreateLeaveRequest();
   const approveRequest = useApproveLeaveRequest();
   const rejectRequest = useRejectLeaveRequest();
 
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({ leaveTypeId: '', startDate: '', endDate: '', reason: '' });
 
-  const leaveTypeOptions = React.useMemo(() => {
-    const map = new Map<string, string>();
-    balances?.forEach((b) => map.set(b.leaveTypeId, b.leaveType.name));
-    return Array.from(map.entries());
-  }, [balances]);
+  const onApprove = async (id: string) => {
+    setActionError(null);
+    try {
+      await approveRequest.mutateAsync(id);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Eroare la aprobarea cererii.');
+    }
+  };
+
+  const onReject = async (id: string) => {
+    const reason = window.prompt('Motivul respingerii:');
+    if (!reason) return;
+    setActionError(null);
+    try {
+      await rejectRequest.mutateAsync({ id, rejectionReason: reason });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Eroare la respingerea cererii.');
+    }
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,9 +120,9 @@ export default function LeaveRequestsPage() {
                   <option value="" disabled>
                     Alege tipul
                   </option>
-                  {leaveTypeOptions.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
+                  {leaveTypes?.map((lt) => (
+                    <option key={lt.id} value={lt.id}>
+                      {lt.name}
                     </option>
                   ))}
                 </select>
@@ -159,15 +180,13 @@ export default function LeaveRequestsPage() {
           <CardHeader>
             <CardTitle>Toate cererile companiei</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
             <RequestsTable
               requests={allRequests}
               showEmployee
-              onApprove={(id) => approveRequest.mutate(id)}
-              onReject={(id) => {
-                const reason = window.prompt('Motivul respingerii:');
-                if (reason) rejectRequest.mutate({ id, rejectionReason: reason });
-              }}
+              onApprove={cannotApprove ? undefined : onApprove}
+              onReject={cannotApprove ? undefined : onReject}
             />
           </CardContent>
         </Card>

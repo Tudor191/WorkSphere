@@ -6,10 +6,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-worksphere}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worksphere}
       POSTGRES_DB: ${POSTGRES_DB:-worksphere}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-worksphere_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-devpass}
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-app-role.sh:/docker-entrypoint-initdb.d/init-app-role.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-worksphere}']
       interval: 5s
@@ -48,7 +51,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER:-worksphere}:${POSTGRES_PASSWORD:-worksphere}@postgres:5432/${POSTGRES_DB:-worksphere}?schema=public
+      # Rol dedicat (non-superuser), NU ${POSTGRES_USER} — acela e superuser-ul
+      # de bootstrap al imaginii Postgres și e exceptat necondiționat de la
+      # Row Level Security. Vezi docker/postgres/init-app-role.sh.
+      DATABASE_URL: postgresql://${POSTGRES_APP_USER:-worksphere_app}:${POSTGRES_APP_PASSWORD:-devpass}@postgres:5432/${POSTGRES_DB:-worksphere}?schema=public
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?variabilă obligatorie}
       JWT_ACCESS_TTL: 15m
@@ -57,6 +63,19 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3001/api/auth/google/callback}
+      # Necompletate = funcțiile respective sunt dezactivate (503 clar), nu
+      # crapă boot-ul — vezi AiService/BillingService.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - '3001:3001'
     depends_on:

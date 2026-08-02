@@ -17,7 +17,9 @@ chat intern și AI assistant, într-un singur loc.
 | Cache / Queue | Redis + BullMQ |
 | Storage | S3-compatible (AWS S3 / Cloudflare R2) |
 | Auth | JWT + Refresh Token rotativ + OAuth Google |
-| Plăți | Stripe |
+| Plăți | Stripe (opțional — vezi mai jos) |
+| AI Assistant | OpenAI (opțional, ținut deliberat în standby — vezi [`docs/ROADMAP.md`](docs/ROADMAP.md)) |
+| Notificări push | Firebase Cloud Messaging (opțional) |
 | Email | Resend |
 | Deploy | Docker, GitHub Actions, Nginx |
 
@@ -62,6 +64,11 @@ cp packages/database/.env.example packages/database/.env
 # CHANGE_ME cu valori reale și folosește ACELEAȘI user/parolă/nume de bază
 # de date în toate trei (DATABASE_URL trebuie să fie identic în
 # apps/api/.env și packages/database/.env).
+#
+# OPENAI_*, STRIPE_* și FIREBASE_* (apps/api) + NEXT_PUBLIC_FIREBASE_*
+# (apps/web) sunt opționale — fără ele, API-ul pornește normal, doar
+# AI Assistant / plățile / push-ul rămân inactive (503 clar la cerere,
+# nu crash). Detalii de activare în docs/ROADMAP.md.
 
 # 3. Pornește infrastructura locală (Postgres + Redis)
 docker compose up -d postgres redis
@@ -100,3 +107,5 @@ docker compose up --build
 - [Arhitectură](docs/ARCHITECTURE.md) — decizii tehnice și motivația lor
 - [Roadmap](docs/ROADMAP.md) — etape de dezvoltare, status, funcționalități propuse
 - [Bază de date](docs/DATABASE.md) — ERD și explicația fiecărui tabel
+- [Jurnal de probleme și soluții](docs/ISSUES.md) — istoric cronologic al
+  bug-urilor reale găsite și fixate, cu cauză și soluție

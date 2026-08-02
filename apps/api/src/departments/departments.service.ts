@@ -10,14 +10,18 @@ export class DepartmentsService {
 
   findAll() {
     return this.prisma.tenantScoped.department.findMany({
+      where: { companyId: TenantContext.requireCompanyId() },
       include: { _count: { select: { employees: true, subDepartments: true } } },
       orderBy: { name: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const department = await this.prisma.tenantScoped.department.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const department = await this.prisma.tenantScoped.department.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: { subDepartments: true, employees: true },
     });
     if (!department) throw new NotFoundException('Departament inexistent.');

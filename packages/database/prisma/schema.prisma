@@ -203,6 +203,19 @@ model User {
   roleId           String
   role             Role       @relation(fields: [roleId], references: [id])
   status           UserStatus @default(INVITED)
+  /// true pentru conturile create de un admin cu parolă temporară generată
+  /// random (vezi EmployeesService.create) — forțează ecranul de setare a
+  /// unei parole proprii la prima autentificare, ca angajatul să nu rămână
+  /// dependent de un șir de caractere random pe care nu-l poate reține.
+  mustChangePassword Boolean  @default(false)
+  /// preferință individuală — dezactivează STRICT notificările (in-app +
+  /// push) pentru mesaje noi de chat; restul tipurilor de notificări
+  /// (concedii, task-uri etc.) nu sunt afectate.
+  chatNotificationsEnabled Boolean @default(true)
+  /// implicit FALSE (spre deosebire de `chatNotificationsEnabled`) — SMS-ul
+  /// costă bani per mesaj, deci e strict opt-in; necesită și `phone` setat
+  /// ca să aibă vreun efect (vezi `NotificationsService.notify`).
+  smsNotificationsEnabled Boolean @default(false)
   twoFactorEnabled Boolean    @default(false)
   twoFactorSecret  String?
   lastLoginAt      DateTime?

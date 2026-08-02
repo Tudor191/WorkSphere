@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [claude/saas-firme-romania-cqqcmu]
   pull_request:
-    branches: [main]
+    branches: [claude/saas-firme-romania-cqqcmu]
 
 env:
   DATABASE_URL: postgresql://worksphere:worksphere@localhost:5432/worksphere_test?schema=public
@@ -57,6 +57,16 @@ jobs:
           pnpm --filter @worksphere/database run generate
           pnpm --filter @worksphere/database run migrate
 
+      # Catalogul global de permisiuni (tabelul `permissions`) NU e populat
+      # de migrații — se sincronizează strict din acest seed (vezi
+      # comentariul din migrația `manager_hard_delete_hr_no_approve`). Fără
+      # el, orice companie înregistrată în teste primește aproape 0
+      # permisiuni reale pe rolurile ei (doar ce a fost inserat ad-hoc direct
+      # în migrații) — orice cerere autentificată după înregistrare pică cu
+      # 403, indiferent de RLS sau de rolul de conexiune folosit.
+      - name: Rulează seed-ul (catalog de permisiuni + planuri de abonament)
+        run: pnpm db:seed
+
       - name: Lint
         run: pnpm lint
 
@@ -69,5 +79,38 @@ jobs:
       - name: Teste unitare
         run: pnpm --filter @worksphere/api run test
 
+      # Rulat cu superuserul (`worksphere`) direct, testele e2e ar trece
+      # oricum, indiferent dacă RLS chiar funcționează sau nu — superuserii
+      # ocolesc RLS necondiționat în Postgres, indiferent de
+      # FORCE ROW LEVEL SECURITY. Fără rolul dedicat aici, testele de
+      # izolare multi-tenant ar verifica STRICT filtrarea explicită
+      # `companyId` din cod, nu RLS-ul propriu-zis — exact bug-ul original
+      # care a pornit acest proiect ar putea trece neobservat prin CI.
+      - name: Creează rolul dedicat al aplicației (worksphere_app), la fel ca în docker-compose
+        env:
+          PGPASSWORD: worksphere
+        run: |
+          psql -h localhost -U worksphere -d worksphere_test -v ON_ERROR_STOP=1 <<-'EOSQL'
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worksphere_app') THEN
+                CREATE ROLE worksphere_app LOGIN PASSWORD 'worksphere_app'
+                  NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+              END IF;
+            END
+            $$;
+
+            GRANT CONNECT ON DATABASE worksphere_test TO worksphere_app;
+            GRANT USAGE ON SCHEMA public TO worksphere_app;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO worksphere_app;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO worksphere_app;
+            ALTER DEFAULT PRIVILEGES FOR ROLE worksphere IN SCHEMA public
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO worksphere_app;
+            ALTER DEFAULT PRIVILEGES FOR ROLE worksphere IN SCHEMA public
+              GRANT USAGE, SELECT ON SEQUENCES TO worksphere_app;
+          EOSQL
+
       - name: Teste e2e (API)
+        env:
+          DATABASE_URL: postgresql://worksphere_app:worksphere_app@localhost:5432/worksphere_test?schema=public
         run: pnpm --filter @worksphere/api run test:e2e

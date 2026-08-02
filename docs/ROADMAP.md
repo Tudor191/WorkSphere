@@ -8,10 +8,10 @@
 | 2. Wireframe | Structură pagini/dashboard descrisă în `ARCHITECTURE.md` §5 și componentele din `apps/web` | ✅ Implicit prin implementare directă în cod |
 | 3. UI Design | Design system Tailwind + shadcn/ui, dark/light mode | ✅ Fundație gata |
 | 4. Database | Schema Prisma completă, toate modulele | ✅ Făcut (`packages/database/prisma/schema.prisma`) |
-| 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟡 Parțial — vezi mai jos |
-| 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟡 Parțial — vezi mai jos |
-| 7. AI | OpenAI + RAG | ⬜ Neînceput — vezi „Ce urmează" |
-| 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 Teste unitare + e2e reale (auth, RBAC, izolare multi-tenant) pe modulele implementate; coverage 80% pe tot produsul e prematur la acest stadiu |
+| 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
+| 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
+| 7. AI | OpenAI + RAG | 🟡 Prima felie implementată (fără RAG încă), ținută deliberat în standby — vezi „Ce urmează" |
+| 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 E2e reale (Postgres+RLS, nu mock) pe auth/RBAC/izolare multi-tenant + Proiecte, CRM, Inventar, Chat, Notificări; unit teste pe logica pură (calcul zile lucrătoare, plafon concediu) și pe integrările opționale (AI/Stripe/Firebase/Twilio — respingere clară când neconfigurate). Rămân neacoperite: Angajați/Departamente/Concedii-Pontaj (verificate manual, nu automat), billing/AI cu credențiale reale. Coverage 80% pe tot produsul rămâne prematur |
 | 9. Deployment | Docker + CI/CD + Nginx | 🟡 Dockerfile-uri multi-stage (api/web) + docker-compose (Postgres/pgvector, Redis, Nginx) + GitHub Actions (lint/typecheck/build/test/e2e). Build-urile Docker nu au putut fi testate live în acest mediu (egress blocat spre registry-ul Docker Hub) — verificate prin review manual atent, nu prin `docker build` real |
 | 10. Lansare Beta | — | ⬜ Neînceput |
 | 11. Feedback | — | ⬜ Neînceput |
@@ -28,7 +28,20 @@
 - Audit log: interceptor global care înregistrează automat mutațiile.
 - Module CRUD complete: `companies`, `employees`, `departments`, `roles`
   (listare, pentru atribuire), `leave-requests` (cu calcul zile disponibile),
-  `attendance` (check-in/check-out + calcul ore suplimentare).
+  `attendance` (check-in/check-out + calcul ore suplimentare), `projects` +
+  `tasks`, `clients` + `leads`, `products` + `stock-movements`, `chat`
+  (canale + mesaje).
+- `notifications` — listă, contor necitite, marcare citit, preferințe
+  proprii (chat/SMS); canale: in-app (mereu), push FCM (opțional,
+  confirmat funcțional end-to-end), SMS Twilio (opțional, în standby —
+  vezi „Ce urmează").
+- `billing` — Stripe Checkout + Billing Portal + webhook, confirmat
+  funcțional cu o plată reală de test.
+- `ai` — asistent conversațional simplu (OpenAI), ținut deliberat în
+  standby (vezi „Ce urmează").
+- `platform-admin` — panou separat de administrare a platformei (listă
+  companii, hard reset), autentificare proprie, izolat de conturile
+  companiilor client.
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -42,28 +55,120 @@
 - Autentificare: login, register, onboarding companie.
 - Dashboard: sidebar + header + dark/light mode, pagini conectate real la
   API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
-  statistici reale din DB.
+  statistici reale din DB, plus Proiecte, Clienți, Lead-uri, Produse și
+  Chat.
+- Clopoțel de notificări în header — listă, marcare citit, activare push,
+  preferință de chat.
+- `/dashboard/account` — profil propriu, schimbare parolă, plan/abonament
+  (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată.
+- `/dashboard/assistant` — asistent AI, cod gata dar scos din navigare
+  (standby).
+- `/dev` — panou separat de platform admin (login propriu, temă forțată
+  dark, izolat de tema conturilor de companie).
 
 ## Ce urmează (nu a fost implementat fals — necesită decizii de business)
 
-1. **AI Assistant + RAG** — necesită cheie OpenAI API activă și decizie
-   despre costuri (per-companie rate limiting pe tokeni). Schema DB are
-   deja tabelele `Document`, `DocumentChunk`, `Embedding` pregătite
-   (pgvector). Implementare recomandată: `pgvector` în Postgres (evită un
-   vector DB separat — Pinecone/Weaviate — inutil la scara inițială),
-   chunking + embeddings la upload document, retrieval + prompt injection
-   controlat în system prompt cu date reale ale companiei curente.
-2. **Stripe billing complet** — checkout, webhook-uri, upgrade/downgrade,
-   facturi. Necesită cont Stripe live/test și decizie asupra prețurilor
-   planurilor. Schema (`SubscriptionPlan`, `Subscription`, `Invoice`) e
-   gata.
-3. **Twilio SMS / alternativă europeană** — necesită cont și decizie
-   (Twilio vs. Vonage vs. SMS.ro pentru cost mai bun pe piața locală).
-4. **Firebase Cloud Messaging** — necesită proiect Firebase.
+1. **AI Assistant + RAG** — ✅ prima felie implementată și funcțională
+   (`POST /ai/chat`, asistent conversațional simplu, fără persistență
+   server-side a conversației, fără RAG încă), dar **ținută deliberat în
+   standby**: linkul din sidebar (`/dashboard/assistant`) e scos din
+   navigare — decizie de business, nu bug, ca să nu cheltuim pe credite
+   OpenAI înainte de primii clienți plătitori. Codul rămâne complet
+   funcțional; ca s-o activăm, e nevoie doar de:
+   1. `OPENAI_API_KEY` (+ opțional `OPENAI_MODEL`) în mediul API-ului —
+      fără ea, endpoint-ul întoarce clar 503, nu crapă.
+   2. Readăugarea intrării de sidebar din `apps/web/src/components/dashboard/sidebar.tsx`
+      (comentariul de acolo explică exact ce s-a scos).
+
+   Plan: activăm când avem primii clienți, sau mai devreme dacă vedem
+   cerere clară (volum mare de întrebări către suport care ar putea fi
+   preluate de asistent).
+
+   Rămâne pentru o felie următoare, indiferent de momentul activării:
+   RAG-ul propriu-zis peste documente
+   (`Document`/`DocumentChunk`/`DocumentEmbedding`, pgvector) — are nevoie
+   întâi de o decizie asupra stocării fișierelor (S3/MinIO/disc local),
+   nefăcută încă — plus rate limiting pe tokeni per companie
+   (`SubscriptionPlan.aiCreditsPerMonth` există în schemă, dar nu e încă
+   aplicat).
+2. **Stripe billing** — ✅ implementat și **confirmat funcțional** printr-un
+   checkout real, de la un capăt la altul (plată test → webhook →
+   activare plan Pro, verificat vizual de user). Cont Stripe personal, în
+   test mode (decizie temporară — trece pe cont de firmă odată ce firma e
+   înregistrată legal și beta e mai avansat). `POST
+   /billing/checkout` (Stripe Checkout găzduit), `POST /billing/portal`
+   (Stripe Billing Portal găzduit — plată/anulare), `POST /billing/webhook`
+   (sincronizează status/perioadă/plan + facturi din evenimente Stripe).
+   Are nevoie de `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` în mediul
+   API-ului (fără ele, 503 clar, nu crash) și de rularea o singură dată a
+   `pnpm --filter @worksphere/database setup-stripe-plans` (creează
+   Product/Price în Stripe pentru planurile `basic`/`pro` și salvează
+   ID-urile în DB). Rămâne pentru o felie următoare: rate limiting pe
+   tokeni AI legat de plan (`aiCreditsPerMonth`), facturare anuală
+   promovată explicit în UI (backend-ul o suportă deja prin
+   `billingCycle`).
+3. **Twilio SMS** — ✅ prima felie implementată (`TwilioService`, opțional,
+   la fel ca AI/Stripe/Firebase), dar **ținută deliberat în standby**:
+   câmpul de telefon și comutatorul „Notificări prin SMS" sunt scoase din
+   `/dashboard/account` (vezi comentariul din fișier) — decizie de
+   business, nu bug. Motiv: contul Twilio **trial** nu permite deloc text
+   liber la trimitere (doar șabloane fixe, fără variabile — testat direct,
+   confirmat cu eroarea API `Invalid template name`), deci mesajele
+   noastre dinamice (nume angajat, motiv respingere etc.) nu pot fi
+   trimise până la upgrade-ul contului (elimină restricția complet, fără
+   nicio schimbare de cod). Codul rămâne complet funcțional; ca s-o
+   activăm, e nevoie doar de:
+   1. Upgrade cont Twilio (metodă de plată + credit minim).
+   2. `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` în
+      mediul API-ului — fără ele, SMS-ul rămâne dezactivat, nu crapă.
+   3. Readăugarea câmpului de telefon + comutatorului din
+      `apps/web/src/app/(dashboard)/dashboard/account/page.tsx`
+      (comentariul de acolo explică exact ce s-a scos).
+
+   Cont personal Twilio, decizie temporară — se poate trece pe alt
+   furnizor (Vonage, SMS.ro pentru cost mai bun pe piața locală) fără să
+   schimbe restul arhitecturii, doar `TwilioService`. Primul (și singurul,
+   deliberat) declanșator cablat, odată activat: aprobarea/respingerea
+   unei cereri de concediu — nu și mesajele de chat, prea frecvente ca să
+   merite cost per SMS. Rămâne pentru o felie următoare: cablarea altor
+   declanșatoare importante (dacă apar).
+4. **Firebase Cloud Messaging (push)** — ✅ implementat și **confirmat
+   funcțional** printr-o notificare push reală, primită de la un capăt la
+   altul (respingere cerere de concediu → notificare în aplicație → push
+   FCM → notificare nativă în Windows/Edge, verificat vizual de user).
+   `NotificationsModule` (listă, contor necitite, marcare citit,
+   înregistrare/dezînregistrare device token, preferințe proprii) +
+   clopoțel în header cu buton "Activează notificările push". Declanșatoare
+   reale cablate: aprobarea/respingerea unei cereri de concediu notifică
+   angajatul; un mesaj nou de chat notifică ceilalți membri ai canalului,
+   cu preferință individuală de activare/dezactivare strict pentru chat
+   (`chatNotificationsEnabled` pe `User`, comutator direct din clopoțel).
+   Are nevoie de un proiect Firebase (gratuit) — vezi `.env.example` din
+   `apps/api` (service account) și `apps/web` (config public + cheie
+   VAPID). Fără ele, notificările tot apar în aplicație (clopoțel), doar
+   push-ul efectiv nu se trimite. Rămâne pentru o felie următoare:
+   cablarea altor declanșatoare (alocare task etc.).
 5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
-   toate; API + UI urmează după ce fundația (auth/RBAC/multi-tenancy) e
-   validată în producție, ca să nu se repete pattern-uri greșite în 10+
-   module.
+   toate.
+   - **Proiecte**: ✅ prima felie implementată — API complet (Projects +
+     Tasks) și UI (listă proiecte, panou pe 4 coloane de status per
+     proiect). Rămân pentru o felie următoare: membri expliciți de
+     proiect (`ProjectMember`), comentarii pe task (`TaskComment`),
+     atașamente (`TaskAttachment`) și time-tracking (`TimeEntry`).
+   - **CRM**: ✅ prima felie implementată — Clienți (CRUD) și Lead-uri
+     (panou pe status, `LeadStatus`). Rămân pentru o felie următoare:
+     `PipelineStage` (etape de pipeline configurabile per companie,
+     în loc de enumul fix) și `CrmNote` (notițe pe client/lead).
+   - **Inventar**: ✅ prima felie implementată — Produse (CRUD, SKU unic
+     per companie) și mișcări de stoc (intrare/ieșire, actualizează
+     `stockQuantity` atomic; ștergerea unui produs e blocată cât timp
+     mai are stoc).
+   - **Chat intern**: ✅ prima felie implementată — canale publice/private
+     cu membri expliciți, mesaje. Livrarea e prin polling (4s), nu
+     WebSocket — real-time propriu-zis rămâne pentru o felie următoare.
+
+   Cu asta, toate cele patru module din acest punct au o primă felie
+   funcțională; ce rămâne pe fiecare e listat mai sus, individual.
 6. **Suită de teste completă (80% coverage)** — construită incremental pe
    măsură ce fiecare modul e implementat, nu retroactiv.
 7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.

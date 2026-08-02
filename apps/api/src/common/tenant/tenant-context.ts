@@ -49,6 +49,11 @@ export class TenantContext {
    * trebuie să rămână "narrow" (egalitate exactă pe email/hash unic
    * global), niciodată liste filtrate doar parțial — altfel devine o gaură
    * de izolare reală. Nu folosi în afara `AuthService`.
+   *
+   * `BillingService` (webhook Stripe — nici un JWT, deci fără `companyId`
+   * cunoscut dinainte) are aceeași nevoie, dar propriul lui escape hatch
+   * (`runBypassingRls`, independent de `AsyncLocalStorage`) — vezi
+   * comentariul de-acolo pentru motiv.
    */
   static runAsBypass<T>(callback: () => T): T {
     return this.storage.run(
