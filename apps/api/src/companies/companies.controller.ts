@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { AuditLogEntity } from '../common/decorators/audit-log.decorator';
+import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CompaniesService } from './companies.service';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
+import { DeleteCompanyDto } from './dto/delete-company.dto';
 
 @ApiTags('companies')
 @Controller('companies')
@@ -57,5 +59,23 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Șterge toate înregistrările de pontaj ale companiei curente' })
   resetAttendance() {
     return this.companiesService.resetAttendanceData();
+  }
+
+  @Get('me/export')
+  @RequirePermission('company:export')
+  @ApiOperation({ summary: 'Export complet, în format JSON, al datelor companiei curente (GDPR)' })
+  exportData() {
+    return this.companiesService.exportData();
+  }
+
+  // Fără `@AuditLogEntity`: compania (și `audit_logs` ei, cascadă) e ștearsă
+  // în cadrul acestui request — un audit log scris DUPĂ răspuns (cum
+  // funcționează interceptorul) ar eșua pe FK inexistent. Vezi și
+  // `PlatformAdminService.deleteCompany`, care are aceeași observație.
+  @Delete('me')
+  @RequirePermission('company:delete')
+  @ApiOperation({ summary: 'Șterge definitiv compania curentă și toate datele ei (GDPR)' })
+  deleteCurrent(@CurrentUser() user: AuthenticatedUser, @Body() dto: DeleteCompanyDto) {
+    return this.companiesService.deleteCurrent(user.userId, dto);
   }
 }

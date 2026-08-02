@@ -45,3 +45,25 @@ export function useResetAttendanceData() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
   });
 }
+
+/** Export GDPR — obiectul JSON brut e descărcat client-side ca fișier (vezi settings/page.tsx). */
+export function useExportCompanyData() {
+  return useMutation({
+    mutationFn: () => apiFetch<Record<string, unknown>>('/companies/me/export'),
+  });
+}
+
+/**
+ * Ștergere GDPR a companiei curente, din Setări (nu confundat cu
+ * `useDeleteCompany` din `use-platform-admin.ts` — acela e pentru panoul
+ * PlatformAdmin, ăsta pentru propriul Admin al companiei).
+ */
+export function useDeleteCurrentCompany() {
+  return useMutation({
+    mutationFn: (input: { password?: string }) =>
+      apiFetch<{ deletedCompanyId: string }>('/companies/me', {
+        method: 'DELETE',
+        body: JSON.stringify(input),
+      }),
+  });
+}

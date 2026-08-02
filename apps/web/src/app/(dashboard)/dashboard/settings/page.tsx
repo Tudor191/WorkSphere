@@ -12,21 +12,37 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useCompany, useResetAttendanceData, useResetLeaveData, useUpdateCompany } from '@/hooks/use-company';
+import {
+  useCompany,
+  useDeleteCurrentCompany,
+  useExportCompanyData,
+  useResetAttendanceData,
+  useResetLeaveData,
+  useUpdateCompany,
+} from '@/hooks/use-company';
 import { ApiError } from '@/lib/api-client';
+import { useAuth } from '@/components/providers/auth-provider';
 
 type ResetCategory = 'leave' | 'attendance' | null;
 
 export default function SettingsPage() {
+  const { user, logout } = useAuth();
   const { data: company, isLoading } = useCompany();
   const updateCompany = useUpdateCompany();
   const resetLeaveData = useResetLeaveData();
   const resetAttendanceData = useResetAttendanceData();
+  const exportData = useExportCompanyData();
+  const deleteCompany = useDeleteCurrentCompany();
   const [form, setForm] = React.useState<Record<string, string>>({});
   const [message, setMessage] = React.useState<string | null>(null);
   const [resetCategory, setResetCategory] = React.useState<ResetCategory>(null);
   const [resetResult, setResetResult] = React.useState<string | null>(null);
   const [resetError, setResetError] = React.useState<string | null>(null);
+  const [exportError, setExportError] = React.useState<string | null>(null);
+  const [showDeleteCompany, setShowDeleteCompany] = React.useState(false);
+  const [deleteCompanyPassword, setDeleteCompanyPassword] = React.useState('');
+  const [deleteCompanyError, setDeleteCompanyError] = React.useState<string | null>(null);
+  const [deleteCompanySuccess, setDeleteCompanySuccess] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (company) {
@@ -73,6 +89,33 @@ export default function SettingsPage() {
   };
 
   const resetPending = resetLeaveData.isPending || resetAttendanceData.isPending;
+
+  const onExportData = async () => {
+    setExportError(null);
+    try {
+      const data = await exportData.mutateAsync();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `worksphere-export-${company?.slug ?? 'companie'}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'Eroare la exportul datelor.');
+    }
+  };
+
+  const onConfirmDeleteCompany = async () => {
+    setDeleteCompanyError(null);
+    try {
+      await deleteCompany.mutateAsync({ password: deleteCompanyPassword || undefined });
+      setDeleteCompanySuccess('Compania și toate datele ei au fost șterse definitiv. Te deconectăm...');
+      setTimeout(() => logout(), 2000);
+    } catch (err) {
+      setDeleteCompanyError(err instanceof ApiError ? err.message : 'Eroare la ștergerea companiei.');
+    }
+  };
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Se încarcă...</p>;
 
@@ -139,6 +182,22 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Datele tale (GDPR)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Descarcă o copie completă, în format JSON, a tuturor datelor companiei (angajați,
+            concedii, pontaje, proiecte, chat, documente etc.) — dreptul la portabilitatea datelor.
+          </p>
+          {exportError && <p className="text-sm text-destructive">{exportError}</p>}
+          <Button variant="outline" onClick={onExportData} disabled={exportData.isPending}>
+            {exportData.isPending ? 'Se pregătește exportul...' : 'Exportă datele companiei'}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card className="border-destructive/40">
         <CardHeader>
           <CardTitle className="text-destructive">Zonă periculoasă</CardTitle>
@@ -157,6 +216,16 @@ export default function SettingsPage() {
             </Button>
             <Button variant="destructive" onClick={() => setResetCategory('attendance')}>
               Resetează pontajele
+            </Button>
+          </div>
+
+          <div className="border-t border-destructive/20 pt-4">
+            <p className="mb-3 text-sm text-muted-foreground">
+              Ștergerea companiei este definitivă și îi afectează pe TOȚI colegii — toate conturile,
+              angajații și datele lor dispar ireversibil, imediat (dreptul la ștergere).
+            </p>
+            <Button variant="destructive" onClick={() => setShowDeleteCompany(true)}>
+              Șterge definitiv compania
             </Button>
           </div>
         </CardContent>
@@ -182,6 +251,76 @@ export default function SettingsPage() {
               {resetPending ? 'Se resetează...' : 'Da, resetează'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDeleteCompany}
+        onOpenChange={(open) => {
+          if (!open && !deleteCompanySuccess) {
+            setShowDeleteCompany(false);
+            setDeleteCompanyPassword('');
+            setDeleteCompanyError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ștergi definitiv compania?</DialogTitle>
+          </DialogHeader>
+
+          {deleteCompanySuccess ? (
+            <p className="text-sm text-success">{deleteCompanySuccess}</p>
+          ) : user?.hasPassword ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Această acțiune este ireversibilă și îi deconectează pe toți colegii. Introdu parola
+                contului tău ca să confirmi.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="delete-company-password">Parola curentă</Label>
+                <Input
+                  id="delete-company-password"
+                  type="password"
+                  autoComplete="off"
+                  value={deleteCompanyPassword}
+                  onChange={(e) => setDeleteCompanyPassword(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {deleteCompanyError && <p className="text-sm text-destructive">{deleteCompanyError}</p>}
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Ești sigur că vrei să ștergi definitiv compania? Această acțiune este ireversibilă și
+                îi deconectează pe toți colegii.
+              </p>
+              {deleteCompanyError && <p className="text-sm text-destructive">{deleteCompanyError}</p>}
+            </>
+          )}
+
+          {!deleteCompanySuccess && (
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowDeleteCompany(false);
+                  setDeleteCompanyPassword('');
+                  setDeleteCompanyError(null);
+                }}
+              >
+                Anulează
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={(user?.hasPassword && !deleteCompanyPassword) || deleteCompany.isPending}
+                onClick={onConfirmDeleteCompany}
+              >
+                {deleteCompany.isPending ? 'Se șterge...' : 'Da, șterge definitiv compania'}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>

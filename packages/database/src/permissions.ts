@@ -18,6 +18,8 @@ export const PERMISSION_CATALOG: Array<{
   // Companie & setări
   { resource: 'company', action: 'read', description: 'Vizualizare setări companie' },
   { resource: 'company', action: 'update', description: 'Editare setări companie' },
+  { resource: 'company', action: 'export', description: 'Export date companie (GDPR, portabilitate)' },
+  { resource: 'company', action: 'delete', description: 'Ștergere definitivă a companiei (GDPR, drept la ștergere)' },
   { resource: 'billing', action: 'read', description: 'Vizualizare abonament și facturi' },
   { resource: 'billing', action: 'update', description: 'Schimbare plan / metodă de plată' },
 

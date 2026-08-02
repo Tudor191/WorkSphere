@@ -60,6 +60,13 @@
   `/account-deletion/confirm` (email + parola contului + cod). Ambele căi
   refolosesc aceeași logică de ștergere ca `hardDelete()` (vezi
   `wipeUserContentAndDelete`, `docs/ISSUES.md` #33).
+- Export/ștergere GDPR la nivel de companie (`GET /companies/me/export`,
+  `DELETE /companies/me`, permisiuni noi `company:export`/`company:delete`,
+  doar Admin) — exportul întoarce un JSON complet cu toate domeniile de
+  business (angajați, concedii, pontaj, proiecte, CRM, chat etc.); ștergerea
+  elimină definitiv compania și PE TOȚI colegii ei (cascadă completă), spre
+  deosebire de ștergerea contului propriu de mai sus, care șterge toată
+  compania doar dacă e singurul cont rămas.
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -88,6 +95,10 @@
 - `/account-deletion/confirm` — pagină publică (fără autentificare, contul
   demis nu se mai poate loga) pentru accelerarea ștergerii unui cont demis,
   din link-ul primit prin email (email + parolă + cod).
+- `/dashboard/settings` — secțiunea "Datele tale (GDPR)" (export complet,
+  descărcat ca fișier JSON) și, în "Zonă periculoasă", ștergerea definitivă
+  a întregii companii (parola contului, sau confirmare simplă pentru un
+  Admin cu cont Google fără parolă) — deconectează automat la succes.
 - `/dashboard/assistant` — asistent AI, cod gata dar scos din navigare
   (standby).
 - `/dev` — panou separat de platform admin (login propriu, temă forțată
@@ -241,7 +252,13 @@ Nu sunt în cerința inițială, dar recomand includerea lor — motiv pe scurt:
    o companie, cu audit log strict) — esențial operațional, fără el orice
    ticket de suport necesită acces direct la DB.
 5. **Export/ștergere date (GDPR — drept la portabilitate și la ștergere)**
-   — obligație legală UE, nu opțional pentru un SaaS B2B european.
+   ✅ implementat, la nivel de companie — din Setări (`/dashboard/settings`,
+   secțiunea "Zonă periculoasă"), orice Admin poate exporta un JSON complet
+   cu toate datele companiei (`GET /companies/me/export`) sau șterge
+   definitiv compania și toți colegii ei (`DELETE /companies/me`, cere
+   parola contului — sau o simplă confirmare pentru conturile Google fără
+   parolă). Complementează ștergerea contului PROPRIU (individual), deja
+   existentă din `AuthService.deleteOwnAccount`.
 6. **API keys per companie pentru integrări externe** (diferit de JWT-ul
    intern) — companiile vor conecta WorkSphere la alte unelte (Zapier,
    n8n, contabilitate).
