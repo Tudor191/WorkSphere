@@ -23,7 +23,10 @@
 - Multi-tenancy: `TenantContextMiddleware` + `PrismaService` cu filtrare
   automată pe `companyId`, RLS activat în migrația SQL.
 - Auth: register companie nouă, login, refresh token cu rotație, logout,
-  Google OAuth (strategie Passport configurată).
+  login prin Google (buton funcțional pe frontend) — inclusiv **înregistrare
+  de companie nouă direct prin Google** (nu doar login pe conturi deja
+  existente), plus email de bun venit la înregistrare (Resend, opțional —
+  vezi „Ce urmează").
 - RBAC: ghid + decorator `@RequirePermission()`, seed cu rolurile standard.
 - Audit log: interceptor global care înregistrează automat mutațiile.
 - Module CRUD complete: `companies`, `employees`, `departments`, `roles`
@@ -52,7 +55,8 @@
 **Frontend (`apps/web`)**
 - Landing page completă: Hero, Beneficii, Funcționalități, Testimoniale,
   Prețuri, FAQ, Contact, Footer — animații Framer Motion, responsive.
-- Autentificare: login, register, onboarding companie.
+- Autentificare: login, register, onboarding companie, login/înregistrare
+  prin Google.
 - Dashboard: sidebar + header + dark/light mode, pagini conectate real la
   API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
   statistici reale din DB, plus Proiecte, Clienți, Lead-uri, Produse și
@@ -148,7 +152,28 @@
    VAPID). Fără ele, notificările tot apar în aplicație (clopoțel), doar
    push-ul efectiv nu se trimite. Rămâne pentru o felie următoare:
    cablarea altor declanșatoare (alocare task etc.).
-5. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
+5. **Login/Înregistrare prin Google + email tranzacțional (Resend)** — ✅
+   implementat și funcțional, activ implicit (nu e în standby ca AI/Twilio,
+   fiindcă nu are cost per-utilizator ca acelea). Buton „Continuă cu
+   Google" pe `/login` și `/register`; dacă emailul contului Google nu are
+   deja un cont, utilizatorul e dus la un pas final (`/register/google`)
+   unde completează doar numele companiei — restul (roluri, plan trial,
+   tipuri de concediu) se creează exact ca la înregistrarea clasică. La
+   orice înregistrare (clasică sau Google) se trimite un email de bun
+   venit prin Resend. Are nevoie de:
+   1. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` (Google
+      Cloud Console → OAuth consent screen + credențiale OAuth 2.0) —
+      fără ele, `/auth/google` eșuează la Google (client invalid), nu la
+      pornirea aplicației.
+   2. `RESEND_API_KEY` (+ opțional `RESEND_FROM_ADDRESS`) — fără ea,
+      email-ul de bun venit e dezactivat silențios (restul flow-ului de
+      înregistrare nu e afectat). Cont gratuit: resend.com.
+
+   Rămâne pentru o felie următoare: alți furnizori (Facebook a fost luat
+   în calcul, dar amânat — nu era cerință clară încă), și mutarea
+   email-ului de invitație pentru angajați noi (`EmployeesService.create`,
+   azi parola temporară e doar în răspunsul API) pe același `EmailService`.
+6. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
    toate.
    - **Proiecte**: ✅ prima felie implementată — API complet (Projects +
      Tasks) și UI (listă proiecte, panou pe 4 coloane de status per
@@ -169,9 +194,9 @@
 
    Cu asta, toate cele patru module din acest punct au o primă felie
    funcțională; ce rămâne pe fiecare e listat mai sus, individual.
-6. **Suită de teste completă (80% coverage)** — construită incremental pe
+7. **Suită de teste completă (80% coverage)** — construită incremental pe
    măsură ce fiecare modul e implementat, nu retroactiv.
-7. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
+8. **Deploy producție (Coolify/VPS) + backup automat + monitorizare**.
 
 ## Funcționalități propuse suplimentare (cresc valoarea comercială pe piața RO)
 

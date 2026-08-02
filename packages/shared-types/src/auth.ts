@@ -19,6 +19,12 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+export const completeGoogleRegistrationSchema = z.object({
+  token: z.string().min(1),
+  companyName: z.string().min(2, 'Numele companiei e prea scurt').max(120),
+});
+export type CompleteGoogleRegistrationInput = z.infer<typeof completeGoogleRegistrationSchema>;
+
 export interface AuthUser {
   id: string;
   email: string;

@@ -17,16 +17,19 @@ import {
 } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
+import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
-import { JwtAccessPayload } from './types/jwt-payload.type';
+import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
+import { GoogleSignupPendingPayload, JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_BYTES = 48;
+const GOOGLE_SIGNUP_TOKEN_TTL = '10m';
 
 interface IssuedTokens {
   accessToken: string;
@@ -46,6 +49,19 @@ interface AuthContextUser {
   mustChangePassword: boolean;
 }
 
+type AuthResult = { tokens: IssuedTokens; user: AuthContextUser };
+
+/**
+ * Rezultatul unei încercări de login prin Google: fie un cont autentificat
+ * direct (existent, sau tocmai legat de acest googleId), fie — dacă emailul
+ * nu are niciun cont — un semnal că mai lipsește un singur pas: numele
+ * companiei (Google nu-l poate furniza). `pendingSignupToken` cară profilul
+ * Google verificat până la acel pas final (`completeGoogleRegistration`).
+ */
+type GoogleAuthResult =
+  | ({ kind: 'authenticated' } & AuthResult)
+  | { kind: 'needs_company_name'; pendingSignupToken: string };
+
 /**
  * NOTĂ ARHITECTURALĂ: toată logica din acest service rulează sub
  * `TenantContext.runAsBypass(...)`. Login/register/refresh/Google OAuth
@@ -59,25 +75,37 @@ interface AuthContextUser {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  // Secret DERIVAT din `accessSecret`, NU cel folosit direct de tokenurile
+  // de acces normale — separare criptografică deliberată, ca un
+  // `pendingSignupToken` să nu poată fi niciodată verificat cu succes de
+  // `JwtStrategy`/`TenantContextMiddleware` (care folosesc secretul de bază),
+  // indiferent cum ar ajunge din greșeală într-un header `Authorization`.
+  // Vezi comentariul din `GoogleSignupPendingPayload`.
+  private readonly googleSignupSecret: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-  ) {}
+    private readonly email: EmailService,
+  ) {
+    this.googleSignupSecret = `${this.config.get<string>('app.jwt.accessSecret')}::google-signup-pending`;
+  }
 
-  async register(dto: RegisterDto): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  async register(dto: RegisterDto): Promise<AuthResult> {
     return TenantContext.runAsBypass(() => this.doRegister(dto));
   }
 
-  async login(dto: LoginDto): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  async login(dto: LoginDto): Promise<AuthResult> {
     return TenantContext.runAsBypass(() => this.doLogin(dto));
   }
 
-  async loginWithGoogle(
-    profile: GoogleProfile,
-  ): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  async loginWithGoogle(profile: GoogleProfile): Promise<GoogleAuthResult> {
     return TenantContext.runAsBypass(() => this.doLoginWithGoogle(profile));
+  }
+
+  async completeGoogleRegistration(dto: CompleteGoogleRegistrationDto): Promise<AuthResult> {
+    return TenantContext.runAsBypass(() => this.doCompleteGoogleRegistration(dto));
   }
 
   async refresh(rawToken: string): Promise<IssuedTokens> {
@@ -184,9 +212,7 @@ export class AuthService {
     });
   }
 
-  private async doRegister(
-    dto: RegisterDto,
-  ): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  private async doRegister(dto: RegisterDto): Promise<AuthResult> {
     const existingUser = await this.prisma.tenantScoped.user.findUnique({
       where: { email: dto.email },
     });
@@ -194,8 +220,34 @@ export class AuthService {
       throw new ConflictException('Există deja un cont cu acest email.');
     }
 
-    const slug = await this.generateUniqueSlug(dto.companyName);
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    return this.createCompanyWithAdmin({
+      companyName: dto.companyName,
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      passwordHash,
+    });
+  }
+
+  /**
+   * Creează o companie nouă + primul cont Admin (roluri/permisiuni
+   * standard, trial 14 zile, tipuri de concediu implicite) — folosit atât
+   * de înregistrarea clasică (`doRegister`, cu parolă) cât și de
+   * înregistrarea prin Google (`doCompleteGoogleRegistration`, fără
+   * parolă, cu `googleId`). `passwordHash: null` + `googleId` setat =
+   * cont utilizabil STRICT prin "Continuă cu Google" (vezi comentariul
+   * câmpului `passwordHash` din schema Prisma).
+   */
+  private async createCompanyWithAdmin(input: {
+    companyName: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    passwordHash: string | null;
+    googleId?: string;
+  }): Promise<AuthResult> {
+    const slug = await this.generateUniqueSlug(input.companyName);
     const trialPlan = await this.prisma.subscriptionPlan.findUnique({ where: { slug: 'trial' } });
     const allPermissions = await this.prisma.permission.findMany();
     const permissionIdByKey = new Map(
@@ -205,7 +257,7 @@ export class AuthService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       const company = await tx.company.create({
-        data: { slug, name: dto.companyName, trialEndsAt },
+        data: { slug, name: input.companyName, trialEndsAt },
       });
 
       // Din acest punct, orice INSERT în tabele [TENANT] trece prin RLS —
@@ -252,10 +304,11 @@ export class AuthService {
       const user = await tx.user.create({
         data: {
           companyId: company.id,
-          email: dto.email,
-          passwordHash,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
+          email: input.email,
+          passwordHash: input.passwordHash,
+          googleId: input.googleId,
+          firstName: input.firstName,
+          lastName: input.lastName,
           roleId: adminRoleId,
           status: 'ACTIVE',
         },
@@ -288,6 +341,14 @@ export class AuthService {
       roleId: result.user.roleId,
     });
 
+    // Bonus, nu condiție de succes a înregistrării — `sendWelcomeEmail`
+    // înghite propriile erori (vezi EmailService), nu poate strica flow-ul.
+    await this.email.sendWelcomeEmail({
+      to: result.user.email,
+      firstName: result.user.firstName,
+      companyName: result.company.name,
+    });
+
     return {
       tokens,
       user: {
@@ -305,7 +366,7 @@ export class AuthService {
     };
   }
 
-  private async doLogin(dto: LoginDto): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  private async doLogin(dto: LoginDto): Promise<AuthResult> {
     const user = await this.prisma.tenantScoped.user.findUnique({
       where: { email: dto.email },
       include: { company: true, role: true },
@@ -352,22 +413,21 @@ export class AuthService {
     };
   }
 
-  private async doLoginWithGoogle(
-    profile: GoogleProfile,
-  ): Promise<{ tokens: IssuedTokens; user: AuthContextUser }> {
+  private async doLoginWithGoogle(profile: GoogleProfile): Promise<GoogleAuthResult> {
     let user = await this.prisma.tenantScoped.user.findUnique({
       where: { email: profile.email },
       include: { company: true, role: true },
     });
 
     if (!user) {
-      // Nu există invitație/cont pentru acest email — pentru v1 refuzăm
-      // auto-crearea unei companii noi prin Google (ar ocoli fluxul de
-      // trial/onboarding din `register`). Un utilizator invitat de un
-      // Admin de companie ar trebui să existe deja cu `status: INVITED`.
-      throw new UnauthorizedException(
-        'Nu există niciun cont asociat acestui email. Cere o invitație de la administratorul companiei.',
-      );
+      // Nu există niciun cont pentru acest email — spre deosebire de
+      // designul inițial (care refuza), acum permitem înregistrarea unei
+      // companii noi prin Google. Nu o putem crea AICI: Google nu ne dă un
+      // nume de companie, deci mai lipsește un pas — vezi
+      // `completeGoogleRegistration`. Profilul verificat de Google e cărat
+      // mai departe într-un token semnat, nu ținut în sesiune server-side.
+      const pendingSignupToken = await this.signGoogleSignupToken(profile);
+      return { kind: 'needs_company_name', pendingSignupToken };
     }
 
     if (!user.googleId) {
@@ -386,6 +446,7 @@ export class AuthService {
     });
 
     return {
+      kind: 'authenticated',
       tokens,
       user: {
         id: user.id,
@@ -400,6 +461,63 @@ export class AuthService {
         mustChangePassword: user.mustChangePassword,
       },
     };
+  }
+
+  /**
+   * Al doilea (și ultim) pas al înregistrării prin Google — primește doar
+   * numele companiei, restul profilului vine din tokenul semnat la pasul
+   * anterior (`doLoginWithGoogle`). Verifică din nou (posibilă condiție de
+   * cursă) că nu a apărut între timp un cont cu acest email — ex. cineva a
+   * primit o invitație chiar în intervalul în care completa acest formular.
+   */
+  private async doCompleteGoogleRegistration(
+    dto: CompleteGoogleRegistrationDto,
+  ): Promise<AuthResult> {
+    let payload: GoogleSignupPendingPayload;
+    try {
+      payload = await this.jwt.verifyAsync<GoogleSignupPendingPayload>(dto.token, {
+        secret: this.googleSignupSecret,
+      });
+    } catch {
+      throw new UnauthorizedException(
+        'Linkul de înregistrare cu Google a expirat sau este invalid. Reia procesul de la Continuă cu Google.',
+      );
+    }
+    if (payload.purpose !== 'google_signup') {
+      throw new UnauthorizedException('Token invalid.');
+    }
+
+    const existingUser = await this.prisma.tenantScoped.user.findUnique({
+      where: { email: payload.email },
+    });
+    if (existingUser) {
+      throw new ConflictException(
+        'Există deja un cont cu acest email — folosește Continuă cu Google din pagina de autentificare.',
+      );
+    }
+
+    return this.createCompanyWithAdmin({
+      companyName: dto.companyName,
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      passwordHash: null,
+      googleId: payload.googleId,
+    });
+  }
+
+  private async signGoogleSignupToken(profile: GoogleProfile): Promise<string> {
+    const payload: GoogleSignupPendingPayload = {
+      purpose: 'google_signup',
+      googleId: profile.googleId,
+      email: profile.email,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+    };
+    return this.jwt.signAsync(payload, {
+      secret: this.googleSignupSecret,
+      expiresIn: GOOGLE_SIGNUP_TOKEN_TTL,
+    });
   }
 
   private async doRefresh(rawToken: string): Promise<IssuedTokens> {

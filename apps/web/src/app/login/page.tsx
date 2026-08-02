@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { loginSchema } from '@worksphere/shared-types';
 import { AuthShell } from '@/components/auth-shell';
+import { GoogleAuthButton } from '@/components/google-auth-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -97,6 +98,13 @@ export default function LoginPage() {
           {loading ? 'Se conectează...' : 'Autentificare'}
         </Button>
       </form>
+
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs text-muted-foreground">sau</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <GoogleAuthButton label="Continuă cu Google" />
     </AuthShell>
   );
 }

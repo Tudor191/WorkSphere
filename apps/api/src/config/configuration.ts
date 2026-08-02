@@ -32,6 +32,10 @@ export interface AppConfig {
     authToken: string;
     fromNumber: string;
   };
+  resend: {
+    apiKey: string;
+    fromAddress: string;
+  };
   frontendUrl: string;
 }
 
@@ -85,6 +89,13 @@ export default (): { app: AppConfig } => ({
       accountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
       authToken: process.env.TWILIO_AUTH_TOKEN ?? '',
       fromNumber: process.env.TWILIO_FROM_NUMBER ?? '',
+    },
+    resend: {
+      // Necompletat = trimiterea de email-uri e dezactivată (vezi
+      // EmailService) — la fel ca la celelalte integrări opționale,
+      // pornirea aplicației nu depinde de asta.
+      apiKey: process.env.RESEND_API_KEY ?? '',
+      fromAddress: process.env.RESEND_FROM_ADDRESS ?? 'WorkSphere <onboarding@resend.dev>',
     },
     frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   },

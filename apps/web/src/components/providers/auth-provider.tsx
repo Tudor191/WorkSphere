@@ -3,7 +3,13 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AuthResponse, AuthUser, LoginInput, RegisterInput } from '@worksphere/shared-types';
+import type {
+  AuthResponse,
+  AuthUser,
+  CompleteGoogleRegistrationInput,
+  LoginInput,
+  RegisterInput,
+} from '@worksphere/shared-types';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { tokenStore } from '@/lib/token-store';
 import { checkAndRecordIdentity, recordIdentityFromToken, clearRecordedIdentity } from '@/lib/session-identity';
@@ -14,6 +20,7 @@ interface AuthContextValue {
   sessionConflict: boolean;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
+  completeGoogleRegistration: (input: CompleteGoogleRegistrationInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -118,6 +125,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [queryClient],
   );
 
+  const completeGoogleRegistration = React.useCallback(
+    async (input: CompleteGoogleRegistrationInput) => {
+      sessionVersionRef.current += 1;
+      const data = await apiFetch<AuthResponse>('/auth/google/complete-registration', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      tokenStore.set(data.accessToken);
+      recordIdentityFromToken(data.accessToken);
+      queryClient.clear();
+      setSessionConflict(false);
+      setUser(data.user);
+    },
+    [queryClient],
+  );
+
   const logout = React.useCallback(async () => {
     sessionVersionRef.current += 1;
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
@@ -135,7 +158,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, sessionConflict, login, register, logout, refreshProfile }}
+      value={{
+        user,
+        isLoading,
+        sessionConflict,
+        login,
+        register,
+        completeGoogleRegistration,
+        logout,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -24,6 +24,7 @@ import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -158,16 +159,46 @@ export class AuthController {
     // Handled by passport-google-oauth20 (redirect către Google).
   }
 
+  /**
+   * Spre deosebire de restul endpoint-urilor de auth, acesta e o navigare
+   * reală de browser (redirect de la Google), nu un `fetch` din SPA — deci
+   * NU poate întoarce JSON direct. Redirecționează fie spre `/dashboard`
+   * (cookie-ul de refresh e deja setat, `AuthProvider` preia sesiunea
+   * automat la încărcare — vezi efectul lui de bootstrap), fie, dacă
+   * emailul nu are cont, spre pagina care cere numele companiei.
+   */
   @Public()
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Callback OAuth Google' })
-  async googleCallback(
-    @Req() req: Request,
+  @ApiOperation({ summary: 'Callback OAuth Google — redirecționează spre frontend' })
+  async googleCallback(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const profile = req.user as GoogleProfile;
+    const result = await this.authService.loginWithGoogle(profile);
+    const frontendUrl = this.config.get<string>('app.frontendUrl')!;
+
+    if (result.kind === 'needs_company_name') {
+      res.redirect(
+        `${frontendUrl}/register/google?token=${encodeURIComponent(result.pendingSignupToken)}`,
+      );
+      return;
+    }
+
+    this.setRefreshCookie(res, result.tokens.refreshToken);
+    res.redirect(`${frontendUrl}/dashboard`);
+  }
+
+  @Public()
+  @Post('google/complete-registration')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Finalizează înregistrarea unei companii noi pornite prin Google (lipsea numele companiei)',
+  })
+  async completeGoogleRegistration(
+    @Body() dto: CompleteGoogleRegistrationDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponseDto> {
-    const profile = req.user as GoogleProfile;
-    const { tokens, user } = await this.authService.loginWithGoogle(profile);
+    const { tokens, user } = await this.authService.completeGoogleRegistration(dto);
     this.setRefreshCookie(res, tokens.refreshToken);
     return this.toAuthResponse(tokens.accessToken, user);
   }
