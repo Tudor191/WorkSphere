@@ -23,6 +23,27 @@ export function countBusinessDays(start: Date, end: Date): number {
   return count;
 }
 
+/**
+ * Determină dacă o cerere de concediu depășește soldul disponibil.
+ * `capped: false` dacă tipul de concediu nu are nicio limită configurată
+ * (nici sold explicit deja creat, nici `defaultDaysPerYear`) — un tip fără
+ * limită NU trebuie tratat ca având 0 zile disponibile (vezi ISSUES.md #26,
+ * cazul concediului medical, care în România nu se scade dintr-un plafon
+ * personal fix).
+ */
+export function checkLeaveBalanceCap(input: {
+  requestedDays: number;
+  usedDays: number;
+  existingTotalDays: number | null;
+  defaultDaysPerYear: number | null;
+}): { capped: boolean; exceeded: boolean; totalDays: number | null } {
+  const totalDays = input.existingTotalDays ?? input.defaultDaysPerYear;
+  if (totalDays === null || totalDays === undefined) {
+    return { capped: false, exceeded: false, totalDays: null };
+  }
+  return { capped: true, exceeded: input.usedDays + input.requestedDays > totalDays, totalDays };
+}
+
 @Injectable()
 export class LeaveRequestsService {
   constructor(
@@ -144,18 +165,14 @@ export class LeaveRequestsService {
         },
       });
 
-      // Soldul se aplică STRICT tipurilor de concediu cu o limită anuală
-      // configurată (`defaultDaysPerYear`) sau cu un sold explicit deja
-      // creat pentru angajat (ex. concediul de odihnă, cu 21 zile/an). Un
-      // tip fără limită configurată (ex. concediul medical — care în
-      // România nu se scade dintr-un plafon personal fix, ci e girat de
-      // certificat medical) nu trebuie plafonat deloc — anterior, orice
-      // tip fără `defaultDaysPerYear` era tratat implicit ca "0 zile
-      // disponibile", blocând orice aprobare de concediu medical.
-      const totalDays = existingBalance?.totalDays ?? request.leaveType.defaultDaysPerYear;
-      if (totalDays !== null && totalDays !== undefined) {
-        const usedDays = existingBalance?.usedDays ?? 0;
-        if (Number(usedDays) + Number(request.daysCount) > Number(totalDays)) {
+      const capCheck = checkLeaveBalanceCap({
+        requestedDays: Number(request.daysCount),
+        usedDays: Number(existingBalance?.usedDays ?? 0),
+        existingTotalDays: existingBalance ? Number(existingBalance.totalDays) : null,
+        defaultDaysPerYear: request.leaveType.defaultDaysPerYear,
+      });
+      if (capCheck.capped) {
+        if (capCheck.exceeded) {
           throw new ConflictException(
             'Zile de concediu insuficiente în sold pentru această perioadă.',
           );
@@ -173,7 +190,7 @@ export class LeaveRequestsService {
               employeeId: request.employeeId,
               leaveTypeId: request.leaveTypeId,
               year,
-              totalDays,
+              totalDays: capCheck.totalDays!,
               usedDays: request.daysCount,
             },
           });
