@@ -567,6 +567,7 @@ export class AuthService {
       to: user.email,
       firstName: user.firstName,
       resetUrl,
+      expiresInMinutes: PASSWORD_RESET_TTL_MS / 60_000,
     });
     return { resetUrl };
   }

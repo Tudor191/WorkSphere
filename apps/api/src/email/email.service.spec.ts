@@ -24,6 +24,7 @@ describe('EmailService', () => {
         to: 'test@e2e.ro',
         firstName: 'Ana',
         resetUrl: 'https://example.ro/reset-password?token=abc',
+        expiresInMinutes: 60,
       }),
     ).resolves.toBeUndefined();
   });
@@ -42,13 +43,26 @@ describe('buildWelcomeEmailHtml', () => {
 });
 
 describe('buildPasswordResetEmailHtml', () => {
-  it('include numele și link-ul de resetare în HTML-ul generat', () => {
+  it('include numele, link-ul de resetare și durata de expirare în HTML-ul generat', () => {
     const html = buildPasswordResetEmailHtml({
       to: 'x@e2e.ro',
       firstName: 'Ana',
       resetUrl: 'https://example.ro/reset-password?token=abc',
+      expiresInMinutes: 60,
     });
     expect(html).toContain('Ana');
     expect(html).toContain('https://example.ro/reset-password?token=abc');
+    expect(html).toContain('60');
+  });
+
+  it('face escape la HTML în numele primit, ca să nu poată injecta markup', () => {
+    const html = buildPasswordResetEmailHtml({
+      to: 'x@e2e.ro',
+      firstName: '<script>alert(1)</script>',
+      resetUrl: 'https://example.ro/reset-password?token=abc',
+      expiresInMinutes: 60,
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
   });
 });
