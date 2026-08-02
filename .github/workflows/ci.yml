@@ -57,6 +57,16 @@ jobs:
           pnpm --filter @worksphere/database run generate
           pnpm --filter @worksphere/database run migrate
 
+      # Catalogul global de permisiuni (tabelul `permissions`) NU e populat
+      # de migrații — se sincronizează strict din acest seed (vezi
+      # comentariul din migrația `manager_hard_delete_hr_no_approve`). Fără
+      # el, orice companie înregistrată în teste primește aproape 0
+      # permisiuni reale pe rolurile ei (doar ce a fost inserat ad-hoc direct
+      # în migrații) — orice cerere autentificată după înregistrare pică cu
+      # 403, indiferent de RLS sau de rolul de conexiune folosit.
+      - name: Rulează seed-ul (catalog de permisiuni + planuri de abonament)
+        run: pnpm db:seed
+
       - name: Lint
         run: pnpm lint
 
