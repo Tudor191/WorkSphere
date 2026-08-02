@@ -42,8 +42,12 @@ export default function ConfirmAccountDeletionPage() {
 
   return (
     <AuthShell
-      title="Șterge-ți contul acum"
-      description="Contul tău a fost dezactivat de un administrator. Confirmă mai jos ca să fie șters definitiv imediat, în loc să aștepți termenul automat."
+      title={done ? 'Cont șters' : 'Șterge-ți contul acum'}
+      description={
+        done
+          ? undefined
+          : 'Contul tău a fost dezactivat de un administrator. Confirmă mai jos ca să fie șters definitiv imediat, în loc să aștepți termenul automat.'
+      }
       footer={
         <>
           Nu ai cerut asta?{' '}
@@ -55,7 +59,7 @@ export default function ConfirmAccountDeletionPage() {
     >
       {done ? (
         <p className="text-sm text-muted-foreground">
-          Contul a fost șters definitiv. Toate datele lui personale au fost eliminate.
+          Toate datele contului au fost eliminate definitiv.
         </p>
       ) : (
         <form onSubmit={onSubmit} className="space-y-4">
