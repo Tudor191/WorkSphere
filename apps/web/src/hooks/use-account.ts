@@ -55,3 +55,17 @@ export function useResetPassword() {
       apiFetch<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify(input) }),
   });
 }
+
+/**
+ * `password` lipsă/gol e valid pentru un cont creat exclusiv prin Google —
+ * backend-ul cere parola STRICT dacă acel cont chiar are una setată.
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: (password: string) =>
+      apiFetch<{ companyDeleted: boolean }>('/auth/me', {
+        method: 'DELETE',
+        body: JSON.stringify({ password: password || undefined }),
+      }),
+  });
+}

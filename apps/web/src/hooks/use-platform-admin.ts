@@ -47,3 +47,15 @@ export function useHardReset() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-admin', 'companies'] }),
   });
 }
+
+export function useDeleteCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (companyId: string) =>
+      platformApiFetch<{ deletedCompanyId: string; deletedCompanyName: string }>(
+        `/platform-admin/companies/${companyId}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-admin', 'companies'] }),
+  });
+}

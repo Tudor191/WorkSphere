@@ -49,6 +49,7 @@ export interface CreatedEmployee {
   userId: string;
   employeeId: string;
   email: string;
+  temporaryPassword: string;
 }
 
 /**
@@ -91,5 +92,6 @@ export async function createEmployeeAccount(
     userId: loginRes.body.user.id as string,
     employeeId: createRes.body.employee.id as string,
     email,
+    temporaryPassword: createRes.body.temporaryPassword as string,
   };
 }

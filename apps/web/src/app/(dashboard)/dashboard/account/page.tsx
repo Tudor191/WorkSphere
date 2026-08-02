@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/components/providers/auth-provider';
-import { useChangePassword, useUpdateProfile } from '@/hooks/use-account';
+import { useChangePassword, useDeleteAccount, useUpdateProfile } from '@/hooks/use-account';
 import { useCompany } from '@/hooks/use-company';
 import { useCreateCheckout, useCreatePortal, useSubscription, useUpdateSubscription } from '@/hooks/use-subscription';
 import { ApiError } from '@/lib/api-client';
@@ -28,10 +28,11 @@ function centsToRon(cents: number) {
 export default function AccountSettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, logout } = useAuth();
   const { data: company } = useCompany();
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
+  const deleteAccount = useDeleteAccount();
   const {
     data: subscriptionData,
     isLoading: subscriptionLoading,
@@ -76,6 +77,12 @@ export default function AccountSettingsPage() {
   const [passwordMessage, setPasswordMessage] = React.useState<string | null>(null);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
 
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteEmailInput, setDeleteEmailInput] = React.useState('');
+  const [deletePasswordInput, setDeletePasswordInput] = React.useState('');
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = React.useState<string | null>(null);
+
   const [planError, setPlanError] = React.useState<string | null>(null);
   const [pendingPlanSlug, setPendingPlanSlug] = React.useState<string | null>(null);
 
@@ -115,6 +122,21 @@ export default function AccountSettingsPage() {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
       setPasswordError(err instanceof ApiError ? err.message : 'Eroare la schimbarea parolei.');
+    }
+  };
+
+  const onConfirmDeleteAccount = async () => {
+    setDeleteError(null);
+    try {
+      const res = await deleteAccount.mutateAsync(deletePasswordInput);
+      setDeleteSuccessMessage(
+        res.companyDeleted
+          ? 'Contul și compania au fost șterse definitiv. Te deconectăm...'
+          : 'Contul tău a fost șters definitiv. Te deconectăm...',
+      );
+      setTimeout(() => logout(), 2000);
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Eroare la ștergerea contului.');
     }
   };
 
@@ -347,6 +369,89 @@ export default function AccountSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-destructive">Zonă periculoasă</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Ștergerea contului este ireversibilă. Dacă ești singurul utilizator din companie, se șterge
+            definitiv toată compania (angajați, concedii, pontaje, documente etc.). Dacă mai există și
+            colegi, contul tău e dezactivat și anonimizat definitiv — nu te vei mai putea autentifica,
+            dar mesajele, task-urile și documentele create de tine rămân vizibile echipei.
+          </p>
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+            Șterge-mi contul
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (!open && !deleteSuccessMessage) {
+            setDeleteEmailInput('');
+            setDeletePasswordInput('');
+            setDeleteError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmă ștergerea contului</DialogTitle>
+          </DialogHeader>
+          {deleteSuccessMessage ? (
+            <p className="text-sm text-success">{deleteSuccessMessage}</p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Această acțiune este ireversibilă. Pentru a confirma, scrie adresa ta de email:{' '}
+                <span className="font-mono font-medium">{user?.email}</span>
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="delete-email">Email-ul contului tău</Label>
+                <Input
+                  id="delete-email"
+                  autoComplete="off"
+                  value={deleteEmailInput}
+                  onChange={(e) => setDeleteEmailInput(e.target.value)}
+                  placeholder="scrie emailul contului tău"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delete-password">Parola curentă</Label>
+                <Input
+                  id="delete-password"
+                  type="password"
+                  autoComplete="off"
+                  value={deletePasswordInput}
+                  onChange={(e) => setDeletePasswordInput(e.target.value)}
+                  placeholder="lasă gol dacă te-ai autentificat doar prin Google"
+                />
+              </div>
+              {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+            </>
+          )}
+          <DialogFooter>
+            {!deleteSuccessMessage && (
+              <>
+                <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+                  Anulează
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deleteEmailInput !== user?.email || deleteAccount.isPending}
+                  onClick={onConfirmDeleteAccount}
+                >
+                  {deleteAccount.isPending ? 'Se șterge...' : 'Da, șterge-mi contul definitiv'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!planToConfirm} onOpenChange={(v) => !v && setPlanToConfirm(null)}>
         <DialogContent>

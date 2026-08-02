@@ -26,6 +26,7 @@ import { SetPasswordDto } from './dto/set-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { GoogleSignupPendingPayload, JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -229,6 +230,100 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash, mustChangePassword: false },
     });
+  }
+
+  /**
+   * Ștergere definitivă a contului propriu, inițiată de utilizator (nu de
+   * un admin) din Setările contului — comportament diferit după caz, ca să
+   * nu riște integritatea datelor colegilor:
+   *  - Dacă e SINGURUL cont din companie (ex: fondator care testează
+   *    solo): șterge ireversibil toată compania, cascadă completă, la fel
+   *    ca `PlatformAdminService.deleteCompany` — nu mai rămâne nimeni/nimic
+   *    care ar depinde de acele date.
+   *  - Dacă mai există colegi: NU șterge fizic rândul `User` — ar risca să
+   *    rupă referințe FĂRĂ cascadă spre conținut creat de acest cont și
+   *    vizibil colegilor (mesaje de chat, task-uri, documente, evenimente
+   *    de calendar, notițe CRM — vezi gap-ul documentat în
+   *    `EmployeesService.hardDelete`). În schimb, anonimizează datele
+   *    personale și dezactivează contul ireversibil (parolă/2FA/Google
+   *    eliminate, sesiuni revocate) — contul nu mai poate fi folosit
+   *    niciodată, dar conținutul lui rămâne intact pentru echipă.
+   */
+  async deleteOwnAccount(
+    userId: string,
+    dto: DeleteAccountDto,
+  ): Promise<{ companyDeleted: boolean }> {
+    const user = await this.prisma.tenantScoped.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { role: true },
+    });
+
+    if (user.passwordHash) {
+      const passwordMatches = dto.password
+        ? await bcrypt.compare(dto.password, user.passwordHash)
+        : false;
+      if (!passwordMatches) {
+        throw new UnauthorizedException('Parola introdusă este incorectă.');
+      }
+    }
+
+    const companyId = user.companyId;
+    const otherUsers = await this.prisma.tenantScoped.user.count({
+      where: { id: { not: userId } },
+    });
+
+    if (otherUsers === 0) {
+      this.logger.warn(
+        `Ștergere cont propriu ${user.email} (${userId}) — șterge toată compania (singurul cont).`,
+      );
+      await TenantContext.runAsBypass(() =>
+        this.prisma.tenantScoped.company.delete({ where: { id: companyId } }),
+      );
+      return { companyDeleted: true };
+    }
+
+    if (user.role.systemKey === 'ADMIN') {
+      const activeAdmins = await this.prisma.tenantScoped.user.count({
+        where: { status: 'ACTIVE', role: { systemKey: 'ADMIN' } },
+      });
+      if (activeAdmins <= 1) {
+        throw new ForbiddenException(
+          'Ești singurul Administrator activ al companiei — atribuie rolul de Administrator altcuiva înainte să-ți poți șterge contul.',
+        );
+      }
+    }
+
+    this.logger.warn(
+      `Ștergere cont propriu ${user.email} (${userId}) — anonimizare + dezactivare (mai există colegi).`,
+    );
+    await this.prisma.runInTenantTransaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          email: `deleted-${userId}@deleted.worksphere.local`,
+          firstName: 'Utilizator',
+          lastName: 'șters',
+          phone: null,
+          avatarUrl: null,
+          passwordHash: null,
+          googleId: null,
+          twoFactorEnabled: false,
+          twoFactorSecret: null,
+          status: 'SUSPENDED',
+        },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.deviceToken.deleteMany({ where: { userId } });
+      await tx.employee.updateMany({
+        where: { userId, endDate: null },
+        data: { endDate: new Date() },
+      });
+    });
+
+    return { companyDeleted: false };
   }
 
   private async doRegister(dto: RegisterDto): Promise<AuthResult> {

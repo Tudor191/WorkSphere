@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { PlatformAdminService } from './platform-admin.service';
@@ -54,5 +64,16 @@ export class PlatformAdminController {
   })
   hardReset(@CurrentPlatformAdmin() admin: AuthenticatedPlatformAdmin, @Body() dto: HardResetDto) {
     return this.platformAdminService.hardReset(admin.id, admin.email, dto.confirmationPhrase);
+  }
+
+  @Delete('companies/:id')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PlatformAdminGuard)
+  @ApiOperation({ summary: 'Șterge ireversibil o singură companie și toate datele ei' })
+  deleteCompany(
+    @CurrentPlatformAdmin() admin: AuthenticatedPlatformAdmin,
+    @Param('id') id: string,
+  ) {
+    return this.platformAdminService.deleteCompany(admin.id, admin.email, id);
   }
 }

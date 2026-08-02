@@ -44,8 +44,13 @@
 - `ai` — asistent conversațional simplu (OpenAI), ținut deliberat în
   standby (vezi „Ce urmează").
 - `platform-admin` — panou separat de administrare a platformei (listă
-  companii, hard reset), autentificare proprie, izolat de conturile
-  companiilor client.
+  companii, hard reset + ștergere chirurgicală a unei singure companii),
+  autentificare proprie, izolat de conturile companiilor client.
+- Ștergere cont propriu (`DELETE /auth/me`, din Setările contului) —
+  autoservire, cere parola curentă (dacă există); dacă e singurul cont din
+  companie, șterge toată compania; altfel anonimizează + dezactivează
+  contul permanent, păstrând conținutul creat (mesaje, task-uri, documente)
+  intact pentru colegi.
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -65,7 +70,9 @@
 - Clopoțel de notificări în header — listă, marcare citit, activare push,
   preferință de chat.
 - `/dashboard/account` — profil propriu, schimbare parolă, plan/abonament
-  (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată.
+  (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată,
+  zonă periculoasă cu ștergere cont propriu (confirmare prin tastarea
+  emailului + parola curentă).
 - `/dashboard/assistant` — asistent AI, cod gata dar scos din navigare
   (standby).
 - `/dev` — panou separat de platform admin (login propriu, temă forțată

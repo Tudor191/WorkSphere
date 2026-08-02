@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -27,6 +28,7 @@ import { SetPasswordDto } from './dto/set-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleProfile } from './strategies/google.strategy';
 
@@ -170,6 +172,22 @@ export class AuthController {
     @Body() dto: SetPasswordDto,
   ): Promise<void> {
     await this.authService.setPassword(user.userId, dto);
+  }
+
+  @Delete('me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Șterge ireversibil contul propriu (sau, dacă e singurul cont din companie, toată compania)',
+  })
+  async deleteAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DeleteAccountDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ companyDeleted: boolean }> {
+    const result = await this.authService.deleteOwnAccount(user.userId, dto);
+    res.clearCookie(REFRESH_COOKIE_NAME);
+    return result;
   }
 
   @Public()

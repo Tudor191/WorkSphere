@@ -15,7 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { platformTokenStore } from '@/lib/platform-token-store';
 import { ApiError } from '@/lib/api-client';
-import { usePlatformAdminMe, usePlatformCompanies, useHardReset } from '@/hooks/use-platform-admin';
+import {
+  usePlatformAdminMe,
+  usePlatformCompanies,
+  useHardReset,
+  useDeleteCompany,
+  type PlatformCompanySummary,
+} from '@/hooks/use-platform-admin';
 
 const CONFIRMATION_PHRASE = 'imiplacepuiul';
 
@@ -25,11 +31,17 @@ export default function PlatformAdminPanel() {
   const { data: admin, isLoading: meLoading, isError: meError } = usePlatformAdminMe(hasToken);
   const { data: companies, isLoading: companiesLoading } = usePlatformCompanies(hasToken && !meError);
   const hardReset = useHardReset();
+  const deleteCompany = useDeleteCompany();
 
   const [resetOpen, setResetOpen] = React.useState(false);
   const [phrase, setPhrase] = React.useState('');
   const [resetError, setResetError] = React.useState<string | null>(null);
   const [resetResult, setResetResult] = React.useState<string | null>(null);
+
+  const [companyToDelete, setCompanyToDelete] = React.useState<PlatformCompanySummary | null>(null);
+  const [deleteSlugInput, setDeleteSlugInput] = React.useState('');
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [deleteResult, setDeleteResult] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!hasToken || meError) {
@@ -51,6 +63,19 @@ export default function PlatformAdminPanel() {
       setPhrase('');
     } catch (err) {
       setResetError(err instanceof ApiError ? err.message : 'Eroare la resetare.');
+    }
+  };
+
+  const confirmDeleteCompany = async () => {
+    if (!companyToDelete) return;
+    setDeleteError(null);
+    try {
+      const res = await deleteCompany.mutateAsync(companyToDelete.id);
+      setDeleteResult(`Compania „${res.deletedCompanyName}” a fost ștearsă ireversibil, cu toate datele ei.`);
+      setCompanyToDelete(null);
+      setDeleteSlugInput('');
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Eroare la ștergere.');
     }
   };
 
@@ -82,6 +107,7 @@ export default function PlatformAdminPanel() {
           <CardDescription>Toate firmele de pe platformă, indiferent de plan sau stare.</CardDescription>
         </CardHeader>
         <CardContent>
+          {deleteResult && <p className="mb-4 text-sm text-success">{deleteResult}</p>}
           {companiesLoading && <p className="text-sm text-muted-foreground">Se încarcă...</p>}
           {!companiesLoading && companies?.length === 0 && (
             <p className="text-sm text-muted-foreground">Nicio companie înregistrată.</p>
@@ -95,7 +121,8 @@ export default function PlatformAdminPanel() {
                     <th className="py-2 pr-4 font-medium">Slug</th>
                     <th className="py-2 pr-4 font-medium">Utilizatori</th>
                     <th className="py-2 pr-4 font-medium">Angajați</th>
-                    <th className="py-2 font-medium">Creată</th>
+                    <th className="py-2 pr-4 font-medium">Creată</th>
+                    <th className="py-2 font-medium" />
                   </tr>
                 </thead>
                 <tbody>
@@ -105,8 +132,22 @@ export default function PlatformAdminPanel() {
                       <td className="py-2 pr-4 text-muted-foreground">{c.slug}</td>
                       <td className="py-2 pr-4">{c.userCount}</td>
                       <td className="py-2 pr-4">{c.employeeCount}</td>
-                      <td className="py-2 text-muted-foreground">
+                      <td className="py-2 pr-4 text-muted-foreground">
                         {new Date(c.createdAt).toLocaleDateString('ro-RO')}
+                      </td>
+                      <td className="py-2 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => {
+                            setCompanyToDelete(c);
+                            setDeleteSlugInput('');
+                            setDeleteError(null);
+                          }}
+                        >
+                          Șterge
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -172,6 +213,51 @@ export default function PlatformAdminPanel() {
               onClick={confirmHardReset}
             >
               {hardReset.isPending ? 'Se șterge...' : 'Da, șterge absolut tot'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!companyToDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCompanyToDelete(null);
+            setDeleteSlugInput('');
+            setDeleteError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Șterge compania „{companyToDelete?.name}”</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Această acțiune șterge ireversibil DOAR această companie și toate datele ei (utilizatori,
+            angajați, concedii, pontaje, documente etc.) — restul platformei rămâne neatins. Pentru a
+            confirma, scrie slug-ul companiei: <span className="font-mono font-medium">{companyToDelete?.slug}</span>
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="delete-slug">Slug-ul companiei</Label>
+            <Input
+              id="delete-slug"
+              autoComplete="off"
+              value={deleteSlugInput}
+              onChange={(e) => setDeleteSlugInput(e.target.value)}
+              placeholder="scrie slug-ul companiei"
+            />
+          </div>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCompanyToDelete(null)}>
+              Anulează
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteSlugInput !== companyToDelete?.slug || deleteCompany.isPending}
+              onClick={confirmDeleteCompany}
+            >
+              {deleteCompany.isPending ? 'Se șterge...' : 'Da, șterge această companie'}
             </Button>
           </DialogFooter>
         </DialogContent>

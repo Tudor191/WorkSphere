@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -125,5 +125,31 @@ export class PlatformAdminService {
 
     this.logger.warn(`HARD RESET finalizat — ${deletedCompanies} companii șterse.`);
     return { deletedCompanies };
+  }
+
+  /**
+   * Șterge ireversibil O SINGURĂ companie (și, prin cascadă, tot ce
+   * depinde de ea) — complementează `hardReset` cu o opțiune chirurgicală,
+   * pentru curățarea unui singur cont de test, fără să afecteze restul
+   * platformei. Aceeași nevoie de `runAsBypass`: cascada tot atinge tabele
+   * [TENANT] cu RLS (ex. `users`), indiferent că `companies` însuși nu are
+   * RLS (e tabelă globală de platformă — vezi migrația RLS).
+   */
+  async deleteCompany(adminId: string, adminEmail: string, companyId: string) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      throw new NotFoundException('Compania nu există.');
+    }
+
+    this.logger.warn(
+      `PlatformAdmin ${adminEmail} (${adminId}) șterge compania „${company.name}” (${companyId}) și toate datele ei.`,
+    );
+
+    await TenantContext.runAsBypass(() =>
+      this.prisma.tenantScoped.company.delete({ where: { id: companyId } }),
+    );
+
+    this.logger.warn(`Compania „${company.name}” (${companyId}) a fost ștearsă.`);
+    return { deletedCompanyId: companyId, deletedCompanyName: company.name };
   }
 }
