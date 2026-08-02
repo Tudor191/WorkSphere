@@ -27,30 +27,43 @@ export async function registerCompany(app: INestApplication, label = 'Co'): Prom
   return { accessToken: res.body.accessToken as string, userId: res.body.user.id as string, suffix };
 }
 
+/** Găsește ID-ul unui rol de sistem (ADMIN/MANAGER/HR/ACCOUNTANT/EMPLOYEE) din seed-ul companiei curente. */
+export async function getRoleId(
+  app: INestApplication,
+  accessToken: string,
+  systemKey: string,
+): Promise<string> {
+  const rolesRes = await request(app.getHttpServer())
+    .get('/api/roles')
+    .set('Authorization', `Bearer ${accessToken}`)
+    .expect(200);
+  const role = (rolesRes.body as Array<{ id: string; systemKey: string }>).find(
+    (r) => r.systemKey === systemKey,
+  );
+  if (!role) throw new Error(`Rolul ${systemKey} nu a fost găsit în seed.`);
+  return role.id;
+}
+
 export interface CreatedEmployee {
   accessToken: string;
   userId: string;
+  employeeId: string;
   email: string;
 }
 
 /**
- * Adaugă un al doilea cont (rol EMPLOYEE) în aceeași companie ca `admin` —
- * folosit pentru scenarii care au nevoie de 2 useri din ACEEAȘI companie
- * (ex. membru de canal chat), spre deosebire de izolarea cross-tenant
- * (care are nevoie de 2 companii diferite).
+ * Adaugă un al doilea cont în aceeași companie ca `admin` — folosit pentru
+ * scenarii care au nevoie de 2 useri din ACEEAȘI companie (ex. membru de
+ * canal chat), spre deosebire de izolarea cross-tenant (care are nevoie de
+ * 2 companii diferite). Implicit rol EMPLOYEE, dar poate fi suprascris
+ * (ex. MANAGER, ca să testăm auto-demiterea).
  */
 export async function createEmployeeAccount(
   app: INestApplication,
   adminAccessToken: string,
+  systemKey = 'EMPLOYEE',
 ): Promise<CreatedEmployee> {
-  const rolesRes = await request(app.getHttpServer())
-    .get('/api/roles')
-    .set('Authorization', `Bearer ${adminAccessToken}`)
-    .expect(200);
-  const employeeRole = (rolesRes.body as Array<{ id: string; systemKey: string }>).find(
-    (r) => r.systemKey === 'EMPLOYEE',
-  );
-  if (!employeeRole) throw new Error('Rolul EMPLOYEE nu a fost găsit în seed.');
+  const roleId = await getRoleId(app, adminAccessToken, systemKey);
 
   const suffix = uniqueSuffix();
   const email = `emp-${suffix}@e2e.ro`;
@@ -61,7 +74,7 @@ export async function createEmployeeAccount(
       email,
       firstName: 'Angajat',
       lastName: suffix,
-      roleId: employeeRole.id,
+      roleId,
       position: 'Tester',
       contractType: 'FULL_TIME',
       hireDate: '2026-01-01',
@@ -73,5 +86,10 @@ export async function createEmployeeAccount(
     .send({ email, password: createRes.body.temporaryPassword })
     .expect(200);
 
-  return { accessToken: loginRes.body.accessToken as string, userId: loginRes.body.user.id as string, email };
+  return {
+    accessToken: loginRes.body.accessToken as string,
+    userId: loginRes.body.user.id as string,
+    employeeId: createRes.body.employee.id as string,
+    email,
+  };
 }
