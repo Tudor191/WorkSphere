@@ -745,7 +745,7 @@ verificate ca aparținând companiei curente, tabele globale ca
 `SubscriptionPlan`) au rămas neschimbate — nu erau parte din problemă.
 
 **Status:** ✅ Rezolvat (aplicat, verificat cu teste e2e reale — Postgres +
-RLS, nu mock) — `<pending>`
+RLS, nu mock) — `62c0403`
 
 ---
 
