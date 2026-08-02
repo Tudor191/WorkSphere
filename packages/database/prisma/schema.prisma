@@ -225,6 +225,7 @@ model User {
   employee          Employee?
   refreshTokens      RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  accountDeletionRequests AccountDeletionRequest[]
   leaveRequestsApproved LeaveRequest[]      @relation("LeaveApprover")
   auditLogs          AuditLog[]
   notifications      Notification[]
@@ -284,6 +285,26 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+/// Creată automat când un angajat e demis (`EmployeesService.remove`) —
+/// contul va fi șters definitiv, automat, peste `ACCOUNT_DELETION_GRACE_DAYS`
+/// zile (vezi `AccountDeletionService`, cron zilnic), sau mai devreme, dacă
+/// fostul angajat confirmă din email (cod + parola contului). Aceeași formă
+/// ca `PasswordResetToken` (tabel copil fără `companyId` propriu, izolat prin
+/// subquery pe `userId` → `users.companyId`) — codul rămâne valabil pe toată
+/// perioada de grație (nu expiră separat), spre deosebire de un token de
+/// resetare parolă.
+model AccountDeletionRequest {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash           String
+  scheduledDeletionAt DateTime
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
+  @@map("account_deletion_requests")
 }
 
 /// [TENANT] Rol per companie. Rolurile de sistem (isSystem=true) sunt seed-uite
@@ -549,8 +570,11 @@ model CalendarEvent {
   endAt         DateTime
   allDay        Boolean           @default(false)
   type          CalendarEventType @default(EVENT)
-  createdById   String
-  createdBy     User              @relation("CalendarEventCreator", fields: [createdById], references: [id])
+  /// nullable: dacă autorul e șters definitiv (vezi `EmployeesService.hardDelete` /
+  /// `AccountDeletionService`), evenimentul rămâne — doar atribuirea se pierde,
+  /// la fel ca `LeaveRequest.approvedById`/`AuditLog.userId`.
+  createdById   String?
+  createdBy     User?             @relation("CalendarEventCreator", fields: [createdById], references: [id])
   createdAt     DateTime          @default(now())
 
   attendees CalendarEventAttendee[]
@@ -594,8 +618,9 @@ model Document {
   sizeBytes    Int
   employeeId   String?
   employee     Employee?        @relation(fields: [employeeId], references: [id])
-  uploadedById String
-  uploadedBy   User             @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  uploadedById String?
+  uploadedBy   User?            @relation("DocumentUploader", fields: [uploadedById], references: [id])
   createdAt    DateTime         @default(now())
 
   chunks         DocumentChunk[]
@@ -723,8 +748,9 @@ model CrmNote {
   client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   leadId    String?
   lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
   content   String
   createdAt DateTime @default(now())
 
@@ -863,8 +889,9 @@ model Task {
   priority    TaskPriority @default(MEDIUM)
   assigneeId  String?
   assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  createdById String
-  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  createdById String?
+  createdBy   User?        @relation("TaskCreator", fields: [createdById], references: [id])
   dueDate     DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -883,8 +910,9 @@ model TaskComment {
   id        String   @id @default(cuid())
   taskId    String
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
   content   String
   createdAt DateTime @default(now())
 
@@ -909,8 +937,9 @@ model TimeEntry {
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   taskId          String
   task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User      @relation(fields: [userId], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id])
   startedAt       DateTime
   endedAt         DateTime?
   durationMinutes Int?
@@ -958,8 +987,9 @@ model ChatMessage {
   id        String   @id @default(cuid())
   channelId String
   channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  /// nullable: vezi comentariul de pe `CalendarEvent.createdById`.
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
   content   String
   editedAt  DateTime?
   createdAt DateTime @default(now())

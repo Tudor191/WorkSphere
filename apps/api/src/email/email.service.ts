@@ -209,6 +209,58 @@ export function buildPasswordResetEmailHtml(input: PasswordResetEmailInput): str
   });
 }
 
+export interface AccountSuspensionEmailInput {
+  to: string;
+  firstName: string;
+  companyName: string;
+  /** Codul de confirmare pentru accelerarea ștergerii — în text, NU în URL (nu ajunge în loguri/istoric browser). */
+  code: string;
+  confirmUrl: string;
+  gracePeriodDays: number;
+}
+
+/** Funcție pură — separată ca să poată fi testată fără rețea/cont Resend. */
+export function buildAccountSuspensionEmailHtml(input: AccountSuspensionEmailInput): string {
+  const firstName = escapeHtml(input.firstName);
+  const companyName = escapeHtml(input.companyName);
+  const code = escapeHtml(input.code);
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px; font-size:22px; line-height:30px; color:${BRAND.ink}; font-weight:700;">
+      Contul tău a fost dezactivat
+    </h1>
+    <p style="margin:0 0 16px; font-size:15px; line-height:24px; color:${BRAND.body};">
+      Salut, ${firstName}. Contul tău din compania <strong style="color:${BRAND.ink};">${companyName}</strong>
+      a fost dezactivat de un administrator. Va fi șters definitiv, automat, peste
+      <strong style="color:${BRAND.ink};">${input.gracePeriodDays} zile</strong> — nu trebuie să faci nimic.
+    </p>
+    <p style="margin:0 0 8px; font-size:15px; line-height:24px; color:${BRAND.body};">
+      Dacă preferi să fie șters mai repede, apasă pe butonul de mai jos și introdu parola contului
+      împreună cu codul de confirmare:
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">
+      <tr><td style="background-color:${BRAND.pageBg}; border:1px solid ${BRAND.border}; border-radius:8px; padding:12px 20px;">
+        <span style="font-family:${BRAND.fontStack}; font-size:22px; font-weight:700; letter-spacing:4px; color:${BRAND.ink};">${code}</span>
+      </td></tr>
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr><td>${renderButton('Șterge-mi contul acum', input.confirmUrl)}</td></tr>
+    </table>
+    <p style="margin:0 0 8px; font-size:13px; line-height:20px; color:${BRAND.muted};">
+      Dacă butonul nu funcționează, copiază acest link în browser:
+    </p>
+    <p style="margin:0 0 24px; font-size:13px; line-height:20px; word-break:break-all;">
+      <a href="${input.confirmUrl}" style="color:${BRAND.accentDark};">${input.confirmUrl}</a>
+    </p>
+    <p style="margin:0; font-size:13px; line-height:20px; color:${BRAND.muted};">
+      Dacă nu te aștepți la acest email sau crezi că e o greșeală, contactează un administrator al
+      companiei tale — codul de mai sus rămâne valabil pe toată perioada de grație.
+    </p>`;
+  return renderEmailShell({
+    preheader: `Contul tău va fi șters automat peste ${input.gracePeriodDays} zile, sau mai repede, la cerere.`,
+    bodyHtml,
+  });
+}
+
 /**
  * Trimite email-uri tranzacționale prin Resend. Fără `RESEND_API_KEY`
  * configurat, `sendWelcomeEmail` devine un no-op (loghează și întoarce
@@ -259,6 +311,22 @@ export class EmailService {
     } catch (error) {
       this.logger.warn(
         `Trimitere email de resetare a parolei eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  async sendAccountSuspensionEmail(input: AccountSuspensionEmailInput): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.emails.send({
+        from: this.fromAddress,
+        to: input.to,
+        subject: 'Contul tău WorkSphere a fost dezactivat',
+        html: buildAccountSuspensionEmailHtml(input),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Trimitere email de dezactivare cont eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
       );
     }
   }

@@ -5,10 +5,12 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { createEmployeeAccount, getRoleId, registerCompany, uniqueSuffix } from './helpers/company';
 
 describe('Angajați + Departamente (e2e)', () => {
   let app: INestApplication;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -16,6 +18,7 @@ describe('Angajați + Departamente (e2e)', () => {
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    prisma = app.get(PrismaService);
   });
 
   afterAll(async () => {
@@ -228,6 +231,59 @@ describe('Angajați + Departamente (e2e)', () => {
       .delete(`/api/employees/${manager.employeeId}`)
       .set('Authorization', `Bearer ${manager.accessToken}`)
       .expect(403);
+  });
+
+  it('ștergerea definitivă reușește chiar dacă angajatul a trimis mesaje de chat și a creat task-uri (vezi ISSUES.md)', async () => {
+    const { accessToken } = await registerCompany(app, 'HardDelContent');
+    // Primul angajat creat devine "fondatorul" (nu poate fi demis de altcineva) —
+    // folosim un al doilea, cu rol MANAGER (are `tasks:create`), ca țintă a testului.
+    await createEmployeeAccount(app, accessToken);
+    const target = await createEmployeeAccount(app, accessToken, 'MANAGER');
+
+    // Angajatul creează conținut văzut/folosit de restul echipei.
+    const channel = await request(app.getHttpServer())
+      .post('/api/chat/channels')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ name: `echipa-${uniqueSuffix()}` })
+      .expect(201);
+    const message = await request(app.getHttpServer())
+      .post(`/api/chat/channels/${channel.body.id}/messages`)
+      .set('Authorization', `Bearer ${target.accessToken}`)
+      .send({ content: 'Un mesaj important' })
+      .expect(201);
+
+    const task = await request(app.getHttpServer())
+      .post('/api/tasks')
+      .set('Authorization', `Bearer ${target.accessToken}`)
+      .send({ title: 'Task creat de angajatul care va fi șters' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .delete(`/api/employees/${target.employeeId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+
+    // Înainte de fix, asta pica cu 500 (constrângere de cheie externă).
+    await request(app.getHttpServer())
+      .delete(`/api/employees/${target.employeeId}/permanent`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+
+    // Mesajul și task-ul rămân intacte pentru echipă — doar atribuirea dispare.
+    const messages = await request(app.getHttpServer())
+      .get(`/api/chat/channels/${channel.body.id}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const persistedMessage = messages.body.find((m: { id: string }) => m.id === message.body.id);
+    expect(persistedMessage).toBeDefined();
+    expect(persistedMessage.content).toBe('Un mesaj important');
+    expect(persistedMessage.authorId).toBeNull();
+
+    const persistedTask = await prisma.runBypassingRls((tx) =>
+      tx.task.findUnique({ where: { id: task.body.id } }),
+    );
+    expect(persistedTask).not.toBeNull();
+    expect(persistedTask?.createdById).toBeNull();
   });
 
   it('izolează angajații și departamentele complet între două companii', async () => {

@@ -259,5 +259,5 @@ export interface ChatMessage {
   content: string;
   editedAt: string | null;
   createdAt: string;
-  author: SafeUser;
+  author: SafeUser | null;
 }

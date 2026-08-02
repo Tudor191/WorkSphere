@@ -40,6 +40,13 @@ export const resetPasswordSchema = z.object({
 });
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
+export const confirmAccountDeletionSchema = z.object({
+  email: z.string().email('Email invalid'),
+  code: z.string().min(6, 'Codul are 6 cifre'),
+  password: z.string().min(1, 'Parola e obligatorie'),
+});
+export type ConfirmAccountDeletionInput = z.infer<typeof confirmAccountDeletionSchema>;
+
 export interface AuthUser {
   id: string;
   email: string;

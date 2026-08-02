@@ -51,6 +51,14 @@
   companie, șterge toată compania; altfel anonimizează + dezactivează
   contul permanent, păstrând conținutul creat (mesaje, task-uri, documente)
   intact pentru colegi.
+- Ștergere automată/accelerată a conturilor demise — la demitere
+  (`EmployeesService.remove`), se trimite automat un email (Resend) cu un
+  cod de confirmare + link, explicând că vor fi șterse definitiv automat
+  peste 7 zile (`@nestjs/schedule`, cron zilnic); fostul angajat poate
+  accelera ștergerea oricând în acea perioadă din pagina publică
+  `/account-deletion/confirm` (email + parola contului + cod). Ambele căi
+  refolosesc aceeași logică de ștergere ca `hardDelete()` (vezi
+  `wipeUserContentAndDelete`, `docs/ISSUES.md` #33).
 - Swagger la `/api/docs`, validare DTO cu `class-validator`, rate limiting,
   Helmet, CORS configurabil.
 - Verificat manual end-to-end (browser real, prin Playwright): înregistrare
@@ -73,6 +81,9 @@
   (Stripe Checkout + Billing Portal), confirmare vizuală înainte de plată,
   zonă periculoasă cu ștergere cont propriu (confirmare prin tastarea
   emailului + parola curentă).
+- `/account-deletion/confirm` — pagină publică (fără autentificare, contul
+  demis nu se mai poate loga) pentru accelerarea ștergerii unui cont demis,
+  din link-ul primit prin email (email + parolă + cod).
 - `/dashboard/assistant` — asistent AI, cod gata dar scos din navigare
   (standby).
 - `/dev` — panou separat de platform admin (login propriu, temă forțată

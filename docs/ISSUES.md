@@ -891,6 +891,57 @@ teste, păstrate ca acoperire permanentă în `notifications.e2e-spec.ts`)
 
 ---
 
+## 33. Ștergerea definitivă a unui angajat (`hardDelete`) pica cu 500 dacă acesta trimisese vreodată un mesaj de chat, crease un task, un document etc.
+
+**Context:** găsit în timpul cercetării pentru o cerință separată (auto-
+ștergere cont propriu) — `EmployeesService.hardDelete()` (permanent
+delete, gate-uit de `employees:hard_delete`) șterge `Employee` + `User`
+direct din DB. Șapte modele (`CalendarEvent.createdById`,
+`Document.uploadedById`, `CrmNote.authorId`, `Task.createdById`,
+`TaskComment.authorId`, `TimeEntry.userId`, `ChatMessage.authorId`) aveau
+o relație OBLIGATORIE (`NOT NULL`) spre `User`, FĂRĂ `onDelete: Cascade`
+— ștergerea unui user care a autorat vreodată unul din aceste rânduri ar
+fi picat cu o eroare de constrângere de cheie externă (P2003), necaptată
+și netradusă într-un mesaj clar. Un comentariu vechi din cod nota explicit
+gap-ul ("modulele neimplementate încă... de revizuit când devin
+funcționale") — dar acele module (Chat, Task-uri, Documente, CRM) erau
+între timp deja funcționale, cu date reale, ceea ce transforma nota
+dintr-un avertisment în vinovat.
+
+**Investigație:** un agent de research a mapat exact unde sunt folosite
+cele 7 câmpuri — 6 din 7 nu aveau NICIUN cod care le citea (module încă
+neexpuse prin endpoint-uri: Calendar, Documente, CRM, comentarii de task,
+time tracking), doar `ChatMessage.author` era efectiv randat (3 locuri:
+`chat.service.ts`, `models.ts`, pagina de chat). Asta a redus blast
+radius-ul unei schimbări de schemă la ceva mic și contenit. Un test
+empiric direct în Postgres (nu doar citit codul) a confirmat un fapt
+neevident: pentru o relație OPȚIONALĂ, Prisma generează automat
+`ON DELETE SET NULL` la nivel de bază de date — iar acel `SET NULL`,
+declanșat de constrângerea de FK la ștergere, FUNCȚIONEAZĂ corect chiar
+și sub RLS (spre deosebire de un `UPDATE`/`upsert` obișnuit emis de
+aplicație, care poate fi blocat — vezi #32). Asta a arătat că nici
+nulificarea manuală deja existentă în `hardDelete()` pentru
+`LeaveRequest.approvedById`/`AuditLog.userId` nu mai era de fapt
+necesară — era deja redundantă, DB-ul o făcea oricum automat.
+
+**Soluție:** cele 7 câmpuri au fost făcute opționale în schema Prisma
+(migrația `nullable_user_fks_and_account_deletion`), lăsând Postgres să
+genereze `ON DELETE SET NULL` automat. `hardDelete()` a fost simplificat
+la doar `employee.delete()` + `user.delete()` (fără nicio nulificare
+manuală — inutilă acum, la fel ca pentru câmpurile deja opționale
+dinainte). Logica a fost extrasă într-o funcție exportată,
+`wipeUserContentAndDelete`, reutilizată și de noul flux de ștergere
+automată/accelerată a conturilor demise. Cele 3 locuri care citeau
+`ChatMessage.author` au primit null-safety (`?.`/fallback „Utilizator
+șters”).
+
+**Status:** ✅ Rezolvat — test nou în `employees-departments.e2e-spec.ts`
+care creează mesaj de chat + task cu contul țintă înainte de hard-delete,
+verifică 204 (nu 500) și că mesajul/task-ul rămân intacte cu atribuirea
+nulificată.
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -954,3 +1005,18 @@ teste, păstrate ca acoperire permanentă în `notifications.e2e-spec.ts`)
     vechi (via `PrismaService.runBypassingRls`, bypass narrow și justificat
     pe acel identificator unic) și creează unul nou, tenant-scoped normal —
     nu încerca să "repari" un update in-place peste granița de tenant.
+12. **`ON DELETE SET NULL` generat automat de Prisma pentru o relație
+    opțională FUNCȚIONEAZĂ corect sub RLS, spre deosebire de un
+    `UPDATE`/`upsert` obișnuit emis de aplicație** (#33) — verificat
+    empiric direct în Postgres, nu presupus. Diferența față de #32/#11:
+    acolo era o scriere normală, emisă de query-ul aplicației, supusă
+    politicii RLS ca orice altă scriere; aici e o acțiune de integritate
+    referențială declanșată de motorul de DB la ștergerea rândului
+    referit, care nu trece prin același control. Concluzie practică:
+    pentru o relație opțională spre `User` care trebuie doar să
+    supraviețuiască ștergerii contului (nu migrării lui între tenanți, ca
+    la #11), nu scrie manual un `updateMany({..., data: {xId: null}})`
+    înainte de `delete()` — schema opțională + `onDelete: SetNull` (automat
+    la Prisma) e suficientă singură, iar nulificarea manuală devine cod
+    mort. Verifică direct în DB (nu presupune) înainte de a păstra sau
+    elimina un asemenea pas.

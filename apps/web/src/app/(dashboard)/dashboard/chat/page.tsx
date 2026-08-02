@@ -194,7 +194,7 @@ export default function ChatPage() {
                     >
                       {!isMine && (
                         <p className="mb-0.5 text-xs font-semibold opacity-80">
-                          {msg.author.firstName} {msg.author.lastName}
+                          {msg.author ? `${msg.author.firstName} ${msg.author.lastName}` : 'Utilizator șters'}
                         </p>
                       )}
                       <p className="whitespace-pre-wrap break-words">{msg.content}</p>

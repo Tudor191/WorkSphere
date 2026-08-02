@@ -57,8 +57,8 @@ export class EmployeesController {
   @AuditLogEntity('Employee')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Demite angajat' })
-  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.employeesService.remove(id, user.userId);
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.employeesService.remove(id, user.userId);
   }
 
   @Delete(':id/permanent')

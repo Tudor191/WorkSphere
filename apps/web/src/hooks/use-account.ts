@@ -1,5 +1,10 @@
 import { useMutation } from '@tanstack/react-query';
-import type { AuthUser, ForgotPasswordInput, ResetPasswordInput } from '@worksphere/shared-types';
+import type {
+  AuthUser,
+  ConfirmAccountDeletionInput,
+  ForgotPasswordInput,
+  ResetPasswordInput,
+} from '@worksphere/shared-types';
 import { apiFetch } from '@/lib/api-client';
 
 export interface UpdateProfileInput {
@@ -53,6 +58,14 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: (input: ResetPasswordInput) =>
       apiFetch<void>('/auth/reset-password', { method: 'POST', body: JSON.stringify(input) }),
+  });
+}
+
+/** Accelerarea ștergerii unui cont demis — vezi emailul trimis la suspendare. */
+export function useConfirmAccountDeletion() {
+  return useMutation({
+    mutationFn: (input: ConfirmAccountDeletionInput) =>
+      apiFetch<void>('/account-deletion/confirm', { method: 'POST', body: JSON.stringify(input) }),
   });
 }
 

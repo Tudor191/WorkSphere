@@ -1,23 +1,34 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt, createHash } from 'node:crypto';
 import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { Prisma } from '@worksphere/database';
+import { Prisma, PrismaClient } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
+import { EmailService } from '../email/email.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
 const BCRYPT_ROUNDS = 12;
+/** Cât timp are un cont demis să ceară ștergerea imediată înainte de ștergerea automată — vezi `AccountDeletionService`. */
+const ACCOUNT_DELETION_GRACE_DAYS = 7;
 
 @Injectable()
 export class EmployeesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(EmployeesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
+  ) {}
 
   findAll() {
     return this.prisma.tenantScoped.employee.findMany({
@@ -184,8 +195,14 @@ export class EmployeesService {
    * și fondatorul companiei (primul angajat creat, la înregistrare) nu
    * poate fi demis de altcineva — altfel un al doilea cont Admin ar
    * putea bloca accesul fondatorului la propria companie.
+   *
+   * Întoarce `{ deletionCode }` (null dacă era deja suspendat, deci fără
+   * cod nou) — folosit intern de teste, ca să poată verifica ciclul complet
+   * de accelerare a ștergerii fără un cont Resend real (vezi
+   * `AuthService.forgotPassword` pentru același tipar). Controller-ul HTTP
+   * ignoră deliberat valoarea întoarsă: răspunsul rămâne 204.
    */
-  async remove(id: string, currentUserId: string) {
+  async remove(id: string, currentUserId: string): Promise<{ deletionCode: string | null }> {
     const employee = await this.findOne(id);
 
     if (employee.userId === currentUserId) {
@@ -200,10 +217,72 @@ export class EmployeesService {
       throw new ForbiddenException('Fondatorul companiei nu poate fi demis de alți utilizatori.');
     }
 
+    // Email + programare de ștergere automată doar la tranziția reală
+    // ACTIV -> SUSPENDAT — o demitere repetată (apel dublu pe un cont deja
+    // demis) nu trebuie să retrimită emailul și să reseteze termenul de 7 zile.
+    const alreadySuspended = employee.user.status === 'SUSPENDED';
+
     await this.prisma.runInTenantTransaction(async (tx) => {
       await tx.user.update({ where: { id: employee.userId }, data: { status: 'SUSPENDED' } });
       await tx.employee.update({ where: { id }, data: { endDate: new Date() } });
     });
+
+    if (alreadySuspended) return { deletionCode: null };
+    const deletionCode = await this.scheduleAccountDeletion(
+      employee.userId,
+      employee.user.email,
+      employee.user.firstName,
+    );
+    return { deletionCode };
+  }
+
+  /**
+   * Programează ștergerea automată (peste `ACCOUNT_DELETION_GRACE_DAYS`
+   * zile — vezi cron-ul din `AccountDeletionService`) și trimite emailul cu
+   * codul + link-ul de accelerare. Nu blochează/anulează demiterea dacă
+   * eșuează (email sau creare rând) — la fel ca `sendWelcomeEmail`, e un
+   * bonus, nu o condiție a acțiunii principale (contul e oricum deja
+   * suspendat, cron-ul îl va prelua eventual chiar dacă acest pas a eșuat
+   * azi — de reîncercat manual sau la următoarea demitere, dacă se repetă).
+   * Întoarce codul generat (sau `null` la eșec) — vezi doc-comentariul de pe `remove()`.
+   */
+  private async scheduleAccountDeletion(
+    userId: string,
+    toEmail: string,
+    firstName: string,
+  ): Promise<string | null> {
+    try {
+      const company = await this.prisma.tenantScoped.company.findUnique({
+        where: { id: TenantContext.requireCompanyId() },
+        select: { name: true },
+      });
+      const code = randomInt(100_000, 1_000_000).toString();
+      const codeHash = createHash('sha256').update(code).digest('hex');
+      const scheduledDeletionAt = new Date(
+        Date.now() + ACCOUNT_DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000,
+      );
+
+      await this.prisma.tenantScoped.accountDeletionRequest.create({
+        data: { userId, codeHash, scheduledDeletionAt },
+      });
+
+      const frontendUrl = this.config.get<string>('app.frontendUrl');
+      const confirmUrl = `${frontendUrl}/account-deletion/confirm?email=${encodeURIComponent(toEmail)}`;
+      await this.email.sendAccountSuspensionEmail({
+        to: toEmail,
+        firstName,
+        companyName: company?.name ?? '',
+        code,
+        confirmUrl,
+        gracePeriodDays: ACCOUNT_DELETION_GRACE_DAYS,
+      });
+      return code;
+    } catch (error) {
+      this.logger.warn(
+        `Programarea ștergerii automate pentru ${toEmail} a eșuat: ${error instanceof Error ? error.message : error}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -218,14 +297,16 @@ export class EmployeesService {
    * ca un hard-delete accidental să nu fie la un click distanță pe un cont
    * încă activ.
    *
-   * Curăță explicit referințele opționale care nu au CASCADE în schemă
-   * (`LeaveRequest.approvedById`, `AuditLog.userId`) — altfel ștergerea ar
-   * eșua pe constrângere de FK pentru orice Manager/Admin care a aprobat
-   * vreodată o cerere sau a făcut vreo acțiune auditată. Modulele
-   * neimplementate încă (Documente, CRM, Proiecte, Chat) au propriile
-   * referințe fără CASCADE către User — nu sunt curățate aici pentru că
-   * azi nu pot conține date (nu există endpoint-uri care să scrie în ele);
-   * de revizuit când acele module devin funcționale.
+   * NU curăță manual referințele opționale spre `User` (`LeaveRequest.approvedById`,
+   * `AuditLog.userId`, `Client`/`Lead.ownerId`, `Task.assigneeId`/`createdById`,
+   * `TaskComment`/`CrmNote`/`ChatMessage.authorId`, `Document.uploadedById`,
+   * `TimeEntry.userId`, `CalendarEvent.createdById`) — toate au `onDelete: SetNull`
+   * la nivel de bază de date (Prisma îl generează automat pentru relații
+   * opționale), deci Postgres le nulează singur, corect, chiar și sub RLS
+   * (verificat direct: constrângerea de FK declanșează `SET NULL` ca parte a
+   * ștergerii, nu ca un UPDATE separat supus politicii RLS obișnuite).
+   * `wipeUserContentAndDelete` mai jos e reutilizată și de fluxul automat de
+   * ștergere programată (`AccountDeletionService`).
    */
   async hardDelete(id: string, currentUserId: string) {
     const employee = await this.findOne(id);
@@ -247,17 +328,29 @@ export class EmployeesService {
       throw new ForbiddenException('Fondatorul companiei nu poate fi șters.');
     }
 
-    await this.prisma.runInTenantTransaction(async (tx) => {
-      await tx.leaveRequest.updateMany({
-        where: { approvedById: employee.userId },
-        data: { approvedById: null },
-      });
-      await tx.auditLog.updateMany({
-        where: { userId: employee.userId },
-        data: { userId: null },
-      });
-      await tx.employee.delete({ where: { id } });
-      await tx.user.delete({ where: { id: employee.userId } });
-    });
+    await this.prisma.runInTenantTransaction((tx) =>
+      wipeUserContentAndDelete(tx, { employeeId: id, userId: employee.userId }),
+    );
   }
+}
+
+type TenantTxClient = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
+/**
+ * Șterge definitiv fișa HR + contul — extrasă din `hardDelete()` ca să
+ * poată fi reutilizată de `AccountDeletionService` (cron-ul zilnic de
+ * ștergere automată + confirmarea publică de accelerare din email), care
+ * rulează sub `PrismaService.runBypassingRls` (fără context de tenant),
+ * nu sub `runInTenantTransaction`. Nu necesită nicio curățare manuală de
+ * referințe — vezi comentariul de pe `hardDelete()`.
+ */
+export async function wipeUserContentAndDelete(
+  tx: TenantTxClient,
+  params: { employeeId: string; userId: string },
+): Promise<void> {
+  await tx.employee.delete({ where: { id: params.employeeId } });
+  await tx.user.delete({ where: { id: params.userId } });
 }

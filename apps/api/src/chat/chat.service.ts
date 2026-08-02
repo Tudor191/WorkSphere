@@ -116,8 +116,8 @@ export class ChatService {
     message: {
       id: string;
       content: string;
-      authorId: string;
-      author: { firstName: string; lastName: string };
+      authorId: string | null;
+      author: { firstName: string; lastName: string } | null;
     },
   ) {
     const members = await this.prisma.tenantScoped.chatChannelMember.findMany({
@@ -128,7 +128,12 @@ export class ChatService {
       message.content.length > MESSAGE_PREVIEW_MAX_LENGTH
         ? `${message.content.slice(0, MESSAGE_PREVIEW_MAX_LENGTH - 3)}...`
         : message.content;
-    const authorName = `${message.author.firstName} ${message.author.lastName}`;
+    // `author` poate fi null dacă a fost șters definitiv între trimiterea
+    // mesajului (imposibil în practică, dar tipul Prisma reflectă acum
+    // relația opțională — vezi migrația nullable User FKs) și această notificare.
+    const authorName = message.author
+      ? `${message.author.firstName} ${message.author.lastName}`
+      : 'Utilizator șters';
 
     await Promise.all(
       members
