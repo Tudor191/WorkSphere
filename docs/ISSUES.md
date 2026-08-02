@@ -803,6 +803,46 @@ implicit, la ambele trigger-uri (`push` și `pull_request`).
 
 ---
 
+## 31. Prima rulare reală de CI pica: orice cerere autentificată după înregistrare dădea 403
+
+**Context:** primul PR al acestei sesiuni (#1) a declanșat, în sfârșit,
+prima rulare reală de CI (după #30). Testele e2e picau consistent, 19
+din 22, toate cu „expected 2xx, got 403 Forbidden" — pe orice cerere
+autentificată imediat după `POST /auth/register`.
+
+**Investigație greșită inițial:** prima ipoteză a fost o problemă de RLS
+sau de propagare `AsyncLocalStorage` (`TenantContext`) specifică
+mediului de test (`Test.createTestingModule` + supertest), pentru că
+exact asta pare simptomul — un rol nou creat "nu are nicio permisiune".
+O rulare "de verificare" locală, printr-o bază de date nouă și rolul
+`worksphere_app`, a trecut 22/22 — ceea ce a întărit greșit ipoteza RLS
+ca fiind exclusă. Verificarea aia era însă invalidă: fiecare fișier de
+test e2e face `dotenv.config({ override: true })`, care suprascrie orice
+`DATABASE_URL` setat manual din shell cu valoarea din
+`apps/api/.env` — un fișier care exista deja în acest mediu, cu
+`DATABASE_URL` către baza de date locală de dezvoltare (deja seed-uită
+de mult). Testele "de verificare" rulau deci, silențios, pe baza de date
+veche și funcțională, nu pe baza nouă, goală, cum se credea.
+
+**Cauza reală**, găsită abia după ce verificarea a fost refăcută corect
+(fișierul `.env` editat temporar, ca să oblige testele să folosească
+efectiv o bază nouă): catalogul global de permisiuni (tabelul
+`permissions`) NU e populat de migrații — se sincronizează strict din
+`prisma/seed.ts` (`pnpm db:seed`), un pas care lipsea complet din
+`ci.yml`. O bază nouă avea un singur rând în `permissions` (inserat
+ad-hoc direct într-o migrație specifică — vezi comentariul din
+`manager_hard_delete_hr_no_approve`), deci orice rol nou creat la
+înregistrare primea aproape 0 permisiuni reale — `PermissionsGuard`
+respingea corect (din perspectiva lui) orice cerere, pentru că rolul
+chiar nu avea permisiunea cerută.
+
+**Soluție:** pas nou în `ci.yml`, `pnpm db:seed`, imediat după migrații.
+
+**Status:** ✅ Rezolvat (aplicat, verificat local cu o bază de date
+efectiv nouă, reproducând întâi eșecul, apoi confirmând fix-ul) — `39a5b97`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -850,3 +890,10 @@ implicit, la ambele trigger-uri (`push` și `pull_request`).
    Merită un audit explicit al acestei clase de bug (grep după
    `findUnique({ where: { id } })` pe modulele tenant-scoped) la fiecare
    câteva module noi, nu doar reținerea lecției ca principiu general.
+10. **O "verificare locală" care trece nu înseamnă automat că a testat ce
+    credeai** (#31) — un `DATABASE_URL` setat manual în shell poate fi
+    suprascris silențios de un `.env` cu `override: true`, fără nicio
+    eroare care să semnaleze asta. Când o verificare confirmă exact ce te
+    aștepți (un pic prea convenabil), merită un control explicit — ex.
+    verifică efectiv CE bază de date/stare a fost atinsă (`SELECT
+    count(*)`), nu doar că testul a ieșit verde.
