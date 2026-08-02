@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   EmailService,
   buildAccountSuspensionEmailHtml,
+  buildEmployeeInvitationEmailHtml,
   buildPasswordResetEmailHtml,
   buildWelcomeEmailHtml,
 } from './email.service';
@@ -30,6 +31,18 @@ describe('EmailService', () => {
         firstName: 'Ana',
         resetUrl: 'https://example.ro/reset-password?token=abc',
         expiresInMinutes: 60,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('sendEmployeeInvitationEmail e no-op (nu aruncă) când nu e configurat', async () => {
+    await expect(
+      unconfigured().sendEmployeeInvitationEmail({
+        to: 'test@e2e.ro',
+        firstName: 'Ana',
+        companyName: 'Acme SRL',
+        setPasswordUrl: 'https://example.ro/reset-password?token=abc',
+        expiresInDays: 7,
       }),
     ).resolves.toBeUndefined();
   });
@@ -79,6 +92,34 @@ describe('buildPasswordResetEmailHtml', () => {
       firstName: '<script>alert(1)</script>',
       resetUrl: 'https://example.ro/reset-password?token=abc',
       expiresInMinutes: 60,
+    });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('buildEmployeeInvitationEmailHtml', () => {
+  it('include numele, compania, link-ul de setare a parolei și durata de expirare', () => {
+    const html = buildEmployeeInvitationEmailHtml({
+      to: 'x@e2e.ro',
+      firstName: 'Ana',
+      companyName: 'Acme SRL',
+      setPasswordUrl: 'https://example.ro/reset-password?token=abc',
+      expiresInDays: 7,
+    });
+    expect(html).toContain('Ana');
+    expect(html).toContain('Acme SRL');
+    expect(html).toContain('https://example.ro/reset-password?token=abc');
+    expect(html).toContain('7 zile');
+  });
+
+  it('face escape la HTML în numele/compania primite', () => {
+    const html = buildEmployeeInvitationEmailHtml({
+      to: 'x@e2e.ro',
+      firstName: '<script>alert(1)</script>',
+      companyName: 'Acme SRL',
+      setPasswordUrl: 'https://example.ro/reset-password?token=abc',
+      expiresInDays: 7,
     });
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');

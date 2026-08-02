@@ -189,8 +189,9 @@ export default function EmployeesPage() {
             {successPassword ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Cont creat cu succes. Parola temporară de mai jos trebuie comunicată angajatului
-                  (în producție se trimite automat prin email):
+                  Cont creat cu succes. Angajatul a primit un email cu un link ca să-și seteze singur
+                  parola. Dacă nu primește emailul, îi poți comunica manual parola temporară de mai jos —
+                  la prima autentificare va trebui oricum s-o schimbe:
                 </p>
                 <code className="block rounded-lg bg-muted px-4 py-3 text-sm">{successPassword}</code>
                 <DialogFooter>

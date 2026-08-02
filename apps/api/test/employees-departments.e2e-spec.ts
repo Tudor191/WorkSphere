@@ -80,6 +80,41 @@ describe('Angajați + Departamente (e2e)', () => {
     expect(deptDetail.body.employees).toHaveLength(1);
   });
 
+  it('crearea unui angajat generează un link de invitație (token de setare a parolei), valabil 7 zile', async () => {
+    const { accessToken } = await registerCompany(app, 'EmpInvite');
+    const roleId = await getRoleId(app, accessToken, 'EMPLOYEE');
+
+    const empRes = await request(app.getHttpServer())
+      .post('/api/employees')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        email: `invitat-${uniqueSuffix()}@e2e.ro`,
+        firstName: 'Invitat',
+        lastName: 'Nou',
+        roleId,
+        position: 'Tester',
+        contractType: 'FULL_TIME',
+        hireDate: '2026-01-01',
+      })
+      .expect(201);
+    const userId = empRes.body.employee.user.id as string;
+
+    const tokenRow = await prisma.runBypassingRls((tx) =>
+      tx.passwordResetToken.findFirst({ where: { userId } }),
+    );
+    expect(tokenRow).not.toBeNull();
+    expect(tokenRow?.usedAt).toBeNull();
+    const daysUntilExpiry = (tokenRow!.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(daysUntilExpiry).toBeGreaterThan(6.9);
+    expect(daysUntilExpiry).toBeLessThan(7.1);
+
+    // Parola temporară rămâne funcțională ca fallback, indiferent de email.
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: empRes.body.employee.user.email, password: empRes.body.temporaryPassword })
+      .expect(200);
+  });
+
   it('respinge crearea unui angajat cu un email deja folosit în companie', async () => {
     const { accessToken } = await registerCompany(app, 'EmpDup');
     const roleId = await getRoleId(app, accessToken, 'EMPLOYEE');

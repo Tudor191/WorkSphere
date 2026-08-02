@@ -19,6 +19,8 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 const BCRYPT_ROUNDS = 12;
 /** Cât timp are un cont demis să ceară ștergerea imediată înainte de ștergerea automată — vezi `AccountDeletionService`. */
 const ACCOUNT_DELETION_GRACE_DAYS = 7;
+/** Cât e valabil linkul de setare a parolei trimis la crearea unui angajat — mai lung decât la reset (1 oră), ca un nou-venit să nu rateze fereastra. */
+const EMPLOYEE_INVITE_TOKEN_TTL_DAYS = 7;
 
 @Injectable()
 export class EmployeesService {
@@ -60,11 +62,12 @@ export class EmployeesService {
    * `PrismaService`: setează contextul de tenant o singură dată și rulează
    * ambele scrieri pe același client `tx`, altfel fiecare apel prin
    * `tenantScoped` ar deschide propria mini-tranzacție separată și
-   * atomicitatea s-ar pierde). Parola temporară e generată aici și
-   * întoarsă o singură dată în răspuns — în producție, acest flux trebuie
-   * să trimită un email de invitație (Resend, vezi `docs/ROADMAP.md`) cu
-   * link de setare a parolei, nu parola în clar. E documentat explicit ca
-   * gap cunoscut, nu implementat fals ca "email trimis".
+   * atomicitatea s-ar pierde). Parola temporară e generată aici și tot
+   * întoarsă o singură dată în răspuns (fallback dacă emailul de mai jos
+   * eșuează/nu e configurat — admin-ul o poate comunica manual) — dar
+   * fluxul normal e emailul de invitație (Resend) cu link de setare a
+   * parolei, nu parola în clar, folosind același mecanism de token ca
+   * "Ai uitat parola?" (vezi `sendInvitation`).
    */
   async create(dto: CreateEmployeeDto): Promise<{ employee: unknown; temporaryPassword: string }> {
     const companyId = TenantContext.requireCompanyId();
@@ -115,12 +118,53 @@ export class EmployeesService {
         });
       });
 
+      await this.sendInvitation(employee.userId, employee.user.email, employee.user.firstName);
       return { employee, temporaryPassword };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Există deja un cont cu acest email.');
       }
       throw error;
+    }
+  }
+
+  /**
+   * Trimite emailul de invitație cu link de setare a parolei — reutilizează
+   * exact mecanismul de token al "Ai uitat parola?" (`PasswordResetToken`,
+   * aceeași pagină `/reset-password`), doar cu o durată de valabilitate mai
+   * lungă (un nou-venit poate rata fereastra scurtă a unui reset obișnuit)
+   * și un text de bun venit, nu de resetare. Nu blochează/anulează crearea
+   * angajatului dacă eșuează — la fel ca `sendWelcomeEmail`, e un bonus;
+   * parola temporară întoarsă de `create()` rămâne fallback-ul funcțional.
+   */
+  private async sendInvitation(userId: string, toEmail: string, firstName: string) {
+    try {
+      const company = await this.prisma.tenantScoped.company.findUnique({
+        where: { id: TenantContext.requireCompanyId() },
+        select: { name: true },
+      });
+      const rawToken = randomBytes(32).toString('hex');
+      await this.prisma.tenantScoped.passwordResetToken.create({
+        data: {
+          userId,
+          tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+          expiresAt: new Date(Date.now() + EMPLOYEE_INVITE_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      const frontendUrl = this.config.get<string>('app.frontendUrl');
+      const setPasswordUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+      await this.email.sendEmployeeInvitationEmail({
+        to: toEmail,
+        firstName,
+        companyName: company?.name ?? '',
+        setPasswordUrl,
+        expiresInDays: EMPLOYEE_INVITE_TOKEN_TTL_DAYS,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Trimitere invitație eșuată pentru ${toEmail}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 

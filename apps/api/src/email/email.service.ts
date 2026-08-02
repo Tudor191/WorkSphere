@@ -171,6 +171,46 @@ export function buildWelcomeEmailHtml(input: WelcomeEmailInput): string {
   });
 }
 
+export interface EmployeeInvitationEmailInput {
+  to: string;
+  firstName: string;
+  companyName: string;
+  setPasswordUrl: string;
+  /** Cât mai e valabil linkul, în zile — mai lung decât la resetarea parolei, ca un nou-venit să nu rateze fereastra. */
+  expiresInDays: number;
+}
+
+/** Funcție pură — separată ca să poată fi testată fără rețea/cont Resend. */
+export function buildEmployeeInvitationEmailHtml(input: EmployeeInvitationEmailInput): string {
+  const firstName = escapeHtml(input.firstName);
+  const companyName = escapeHtml(input.companyName);
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px; font-size:22px; line-height:30px; color:${BRAND.ink}; font-weight:700;">
+      Bine ai venit în echipă, ${firstName}!
+    </h1>
+    <p style="margin:0 0 24px; font-size:15px; line-height:24px; color:${BRAND.body};">
+      Contul tău din compania <strong style="color:${BRAND.ink};">${companyName}</strong> pe WorkSphere a fost creat.
+      Apasă pe butonul de mai jos ca să-ți alegi o parolă și să te poți autentifica.
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr><td>${renderButton('Setează-ți parola', input.setPasswordUrl)}</td></tr>
+    </table>
+    <p style="margin:0 0 8px; font-size:13px; line-height:20px; color:${BRAND.muted};">
+      Dacă butonul nu funcționează, copiază acest link în browser:
+    </p>
+    <p style="margin:0 0 24px; font-size:13px; line-height:20px; word-break:break-all;">
+      <a href="${input.setPasswordUrl}" style="color:${BRAND.accentDark};">${input.setPasswordUrl}</a>
+    </p>
+    <p style="margin:0; font-size:13px; line-height:20px; color:${BRAND.muted};">
+      Linkul e valabil ${input.expiresInDays} zile. Dacă nu te aștepți la acest email, contactează un
+      administrator al companiei tale.
+    </p>`;
+  return renderEmailShell({
+    preheader: `Contul tău din ${companyName} e gata — setează-ți parola ca să te autentifici.`,
+    bodyHtml,
+  });
+}
+
 export interface PasswordResetEmailInput {
   to: string;
   firstName: string;
@@ -295,6 +335,22 @@ export class EmailService {
     } catch (error) {
       this.logger.warn(
         `Trimitere email de bun venit eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  async sendEmployeeInvitationEmail(input: EmployeeInvitationEmailInput): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.emails.send({
+        from: this.fromAddress,
+        to: input.to,
+        subject: `Bine ai venit în echipa ${input.companyName} pe WorkSphere!`,
+        html: buildEmployeeInvitationEmailHtml(input),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Trimitere email de invitație eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
       );
     }
   }

@@ -55,8 +55,8 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell
-      title="Alege o parolă nouă"
-      description="Parola nouă înlocuiește definitiv parola veche a contului."
+      title="Alege o parolă"
+      description="Această parolă va fi folosită de acum încolo pentru autentificare — valabil atât la resetare, cât și la prima setare a parolei."
       footer={
         <>
           Linkul nu funcționează?{' '}

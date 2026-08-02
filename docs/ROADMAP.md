@@ -30,11 +30,12 @@
   înregistrare — toate prin Resend, opțional (vezi „Ce urmează").
 - RBAC: ghid + decorator `@RequirePermission()`, seed cu rolurile standard.
 - Audit log: interceptor global care înregistrează automat mutațiile.
-- Module CRUD complete: `companies`, `employees`, `departments`, `roles`
-  (listare, pentru atribuire), `leave-requests` (cu calcul zile disponibile),
-  `attendance` (check-in/check-out + calcul ore suplimentare), `projects` +
-  `tasks`, `clients` + `leads`, `products` + `stock-movements`, `chat`
-  (canale + mesaje).
+- Module CRUD complete: `companies`, `employees` (email automat de
+  invitație la creare, cu link de setare a parolei — vezi mai jos),
+  `departments`, `roles` (listare, pentru atribuire), `leave-requests` (cu
+  calcul zile disponibile), `attendance` (check-in/check-out + calcul ore
+  suplimentare), `projects` + `tasks`, `clients` + `leads`, `products` +
+  `stock-movements`, `chat` (canale + mesaje).
 - `notifications` — listă, contor necitite, marcare citit, preferințe
   proprii (chat/SMS); canale: in-app (mereu), push FCM (opțional,
   confirmat funcțional end-to-end), SMS Twilio (opțional, în standby —
@@ -192,9 +193,11 @@
       înregistrare nu e afectat). Cont gratuit: resend.com.
 
    Rămâne pentru o felie următoare: alți furnizori (Facebook a fost luat
-   în calcul, dar amânat — nu era cerință clară încă), și mutarea
-   email-ului de invitație pentru angajați noi (`EmployeesService.create`,
-   azi parola temporară e doar în răspunsul API) pe același `EmailService`.
+   în calcul, dar amânat — nu era cerință clară încă). Email-ul de
+   invitație pentru angajați noi (`EmployeesService.create`) e ✅
+   implementat — link de setare a parolei (același mecanism ca „Ai uitat
+   parola?", valabil 7 zile), cu parola temporară din răspunsul API ca
+   fallback dacă emailul nu ajunge.
 6. **CRM, Inventar, Proiecte, Chat intern** — schema DB e completă pentru
    toate.
    - **Proiecte**: ✅ prima felie implementată — API complet (Projects +
