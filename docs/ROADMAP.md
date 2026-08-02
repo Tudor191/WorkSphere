@@ -11,7 +11,7 @@
 | 5. Backend | NestJS: infra (auth, RBAC, multi-tenancy, audit) + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
 | 6. Frontend | Next.js: landing + dashboard shell + module esențiale | 🟢 Complet pentru scopul v1 — vezi „Ce este funcțional acum" |
 | 7. AI | OpenAI + RAG | 🟡 Prima felie implementată (fără RAG încă), ținută deliberat în standby — vezi „Ce urmează" |
-| 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 Teste unitare + e2e reale (auth, RBAC, izolare multi-tenant) pe modulele implementate; coverage 80% pe tot produsul e prematur la acest stadiu |
+| 8. Testare | Unit + integration + E2E, 80% coverage | 🟡 E2e reale (Postgres+RLS, nu mock) pe auth/RBAC/izolare multi-tenant + Proiecte, CRM, Inventar, Chat, Notificări; unit teste pe logica pură (calcul zile lucrătoare, plafon concediu) și pe integrările opționale (AI/Stripe/Firebase/Twilio — respingere clară când neconfigurate). Rămân neacoperite: Angajați/Departamente/Concedii-Pontaj (verificate manual, nu automat), billing/AI cu credențiale reale. Coverage 80% pe tot produsul rămâne prematur |
 | 9. Deployment | Docker + CI/CD + Nginx | 🟡 Dockerfile-uri multi-stage (api/web) + docker-compose (Postgres/pgvector, Redis, Nginx) + GitHub Actions (lint/typecheck/build/test/e2e). Build-urile Docker nu au putut fi testate live în acest mediu (egress blocat spre registry-ul Docker Hub) — verificate prin review manual atent, nu prin `docker build` real |
 | 10. Lansare Beta | — | ⬜ Neînceput |
 | 11. Feedback | — | ⬜ Neînceput |
