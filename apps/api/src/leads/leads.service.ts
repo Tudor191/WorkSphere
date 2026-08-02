@@ -18,8 +18,11 @@ export class LeadsService {
   }
 
   async findOne(id: string) {
-    const lead = await this.prisma.tenantScoped.lead.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const lead = await this.prisma.tenantScoped.lead.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: { owner: { select: SAFE_USER_SELECT } },
     });
     if (!lead) throw new NotFoundException('Lead inexistent.');

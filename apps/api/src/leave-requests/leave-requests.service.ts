@@ -121,8 +121,11 @@ export class LeaveRequestsService {
    */
   async approve(id: string, approvedById: string) {
     const updated = await this.prisma.runInTenantTransaction(async (tx) => {
-      const request = await tx.leaveRequest.findUnique({
-        where: { id },
+      // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+      // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+      // strat care împiedică accesul la un rând din altă companie.
+      const request = await tx.leaveRequest.findFirst({
+        where: { id, companyId: TenantContext.requireCompanyId() },
         include: { leaveType: true },
       });
       if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
@@ -193,7 +196,12 @@ export class LeaveRequestsService {
   }
 
   async reject(id: string, approvedById: string, dto: RejectLeaveRequestDto) {
-    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const request = await this.prisma.tenantScoped.leaveRequest.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
+    });
     if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
     if (request.status !== 'PENDING') {
       throw new ConflictException('Doar cererile în așteptare pot fi respinse.');
@@ -220,7 +228,12 @@ export class LeaveRequestsService {
 
   async cancel(id: string) {
     const employee = await this.requireCurrentEmployee();
-    const request = await this.prisma.tenantScoped.leaveRequest.findUnique({ where: { id } });
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const request = await this.prisma.tenantScoped.leaveRequest.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
+    });
     if (!request) throw new NotFoundException('Cerere de concediu inexistentă.');
     if (request.employeeId !== employee.id) {
       throw new ForbiddenException('Poți anula doar propriile cereri.');

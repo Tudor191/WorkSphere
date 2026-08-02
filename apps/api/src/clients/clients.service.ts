@@ -21,8 +21,11 @@ export class ClientsService {
   }
 
   async findOne(id: string) {
-    const client = await this.prisma.tenantScoped.client.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const client = await this.prisma.tenantScoped.client.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: {
         owner: { select: SAFE_USER_SELECT },
         _count: { select: { tasks: true, notes: true, projects: true } },

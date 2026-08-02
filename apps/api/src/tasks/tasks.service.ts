@@ -27,8 +27,11 @@ export class TasksService {
   }
 
   async findOne(id: string) {
-    const task = await this.prisma.tenantScoped.task.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const task = await this.prisma.tenantScoped.task.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: TASK_INCLUDE,
     });
     if (!task) throw new NotFoundException('Task inexistent.');

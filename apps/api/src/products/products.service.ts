@@ -17,8 +17,11 @@ export class ProductsService {
   }
 
   async findOne(id: string) {
-    const product = await this.prisma.tenantScoped.product.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const product = await this.prisma.tenantScoped.product.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: { stockMovements: { orderBy: { createdAt: 'desc' }, take: 50 } },
     });
     if (!product) throw new NotFoundException('Produs inexistent.');

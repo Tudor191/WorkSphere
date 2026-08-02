@@ -17,8 +17,11 @@ export class ProjectsService {
   }
 
   async findOne(id: string) {
-    const project = await this.prisma.tenantScoped.project.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const project = await this.prisma.tenantScoped.project.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: {
         tasks: { orderBy: { createdAt: 'desc' } },
         _count: { select: { tasks: true } },

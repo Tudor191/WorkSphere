@@ -28,8 +28,11 @@ export class EmployeesService {
   }
 
   async findOne(id: string) {
-    const employee = await this.prisma.tenantScoped.employee.findUnique({
-      where: { id },
+    // `findFirst` (nu `findUnique`) ca să putem filtra explicit și pe
+    // `companyId`, nu doar pe `id` — RLS nu trebuie să rămână singurul
+    // strat care împiedică accesul la un rând din altă companie.
+    const employee = await this.prisma.tenantScoped.employee.findFirst({
+      where: { id, companyId: TenantContext.requireCompanyId() },
       include: {
         user: { select: SAFE_USER_SELECT },
         department: true,
@@ -190,6 +193,7 @@ export class EmployeesService {
     }
 
     const founder = await this.prisma.tenantScoped.employee.findFirst({
+      where: { companyId: TenantContext.requireCompanyId() },
       orderBy: { createdAt: 'asc' },
     });
     if (founder?.id === id) {
@@ -236,6 +240,7 @@ export class EmployeesService {
     }
 
     const founder = await this.prisma.tenantScoped.employee.findFirst({
+      where: { companyId: TenantContext.requireCompanyId() },
       orderBy: { createdAt: 'asc' },
     });
     if (founder?.id === id) {

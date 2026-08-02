@@ -717,6 +717,38 @@ gestiona deja corect distincția, doar valoarea trimisă era greșită.
 
 ---
 
+## 28. Aproape toate modulele se bazau STRICT pe RLS pentru izolarea pe un singur rând — găsit la pregătirea suitei de teste
+
+**Context:** la scrierea testelor e2e de izolare multi-tenant pentru
+modulele mai noi (Proiecte, CRM, Inventar), am verificat sistematic cum
+fiecare `findOne()`/`update()`/`remove()` găsește rândul cerut.
+
+**Cauză:** `departments`, `employees`, `clients`, `leads`, `products`,
+`tasks`, `projects` și 2 din 3 lookup-uri din `leave-requests` foloseau
+`findUnique({ where: { id } })` — fără filtrare explicită pe `companyId`.
+Practic RLS rămânea SINGURA linie de apărare pentru orice cerere de genul
+`GET /projects/:id` cu un ID dintr-o altă companie — exact opusul lecției
+învățate la #12 ("RLS nu e suficient singur"), care nu fusese aplicată
+sistematic pe restul modulelor construite ulterior (doar `chat.service.ts`
+respecta corect tiparul, cu `findFirst({ where: { id, companyId } })`).
+Nu era exploatabil practic (RLS chiar blochează accesul — confirmat cu
+teste e2e), dar un singur strat de apărare acolo unde ar trebui să fie
+două, pe aproape tot produsul.
+
+**Soluție:** toate lookup-urile pe un singur rând, unde ID-ul poate veni
+dintr-un parametru de request, trec de la `findUnique({ where: { id } })`
+la `findFirst({ where: { id, companyId: TenantContext.requireCompanyId() } })`
+— `findUnique` nu poate primi un filtru suplimentar în afara constrângerii
+unice, de-aia era folosit greșit inițial. Lookup-urile care folosesc un
+ID intern, netransmis de client (`requireCurrentEmployee`, ID-uri deja
+verificate ca aparținând companiei curente, tabele globale ca
+`SubscriptionPlan`) au rămas neschimbate — nu erau parte din problemă.
+
+**Status:** ✅ Rezolvat (aplicat, verificat cu teste e2e reale — Postgres +
+RLS, nu mock) — `<pending>`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -757,3 +789,10 @@ gestiona deja corect distincția, doar valoarea trimisă era greșită.
    SDK-ului, nu al aplicației. Când un push/notification SDK se comportă
    neașteptat, verifică întâi comportamentul documentat al SDK-ului, nu
    presupune automat că bug-ul e în stratul propriu de date.
+9. **O lecție de securitate învățată o singură dată (#12) nu se propagă
+   singură la codul scris ulterior** (#28) — `chat.service.ts` respecta
+   corect tiparul de defense-in-depth de la bun început, dar niciun alt
+   modul construit după aceea nu a fost verificat sistematic la fel.
+   Merită un audit explicit al acestei clase de bug (grep după
+   `findUnique({ where: { id } })` pe modulele tenant-scoped) la fiecare
+   câteva module noi, nu doar reținerea lecției ca principiu general.
