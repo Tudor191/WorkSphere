@@ -799,7 +799,7 @@ la #29 (RLS ocolit în CI) nu apucase încă să ruleze vreodată real.
 **Soluție:** `branches: [main]` înlocuit cu numele real al branch-ului
 implicit, la ambele trigger-uri (`push` și `pull_request`).
 
-**Status:** ✅ Rezolvat (aplicat) — `<pending>`
+**Status:** ✅ Rezolvat (aplicat) — `1b544dd`
 
 ---
 
