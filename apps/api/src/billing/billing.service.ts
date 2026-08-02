@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
-import { PrismaClient, SubscriptionStatus } from '@worksphere/database';
+import { SubscriptionStatus } from '@worksphere/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
@@ -143,9 +143,9 @@ export class BillingService {
 
   /**
    * Evenimentul vine direct de la Stripe, fără JWT — niciun `TenantContext`
-   * nu există la acest punct. `runBypassingRls` (mai jos) e escape hatch-ul
-   * pentru asta: căutări "narrow", după un identificator unic global
-   * (`stripeCustomerId`/`stripeSubscriptionId`), niciodată liste.
+   * nu există la acest punct. `PrismaService.runBypassingRls` e escape
+   * hatch-ul pentru asta: căutări "narrow", după un identificator unic
+   * global (`stripeCustomerId`/`stripeSubscriptionId`), niciodată liste.
    */
   async handleEvent(event: Stripe.Event): Promise<void> {
     switch (event.type) {
@@ -214,7 +214,7 @@ export class BillingService {
     // Logăm explicit rezultatul, ca să distingem clar "nu s-a găsit nimic"
     // de o reușită reală, în loc să lăsăm un webhook Stripe să pice cu 500
     // pe o eroare opacă.
-    const count = await this.runBypassingRls((tx) =>
+    const count = await this.prisma.runBypassingRls((tx) =>
       tx.subscription
         .updateMany({
           where: { companyId },
@@ -241,7 +241,7 @@ export class BillingService {
     const stripeCustomerId =
       typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id;
 
-    await this.runBypassingRls(async (tx) => {
+    await this.prisma.runBypassingRls(async (tx) => {
       const subscription = await tx.subscription.findFirst({ where: { stripeCustomerId } });
       if (!subscription) {
         this.logger.warn(`Nu am găsit nicio companie pentru customer Stripe ${stripeCustomerId}.`);
@@ -275,35 +275,9 @@ export class BillingService {
       typeof stripeSubscription.customer === 'string'
         ? stripeSubscription.customer
         : stripeSubscription.customer.id;
-    const subscription = await this.runBypassingRls((tx) =>
+    const subscription = await this.prisma.runBypassingRls((tx) =>
       tx.subscription.findFirst({ where: { stripeCustomerId } }),
     );
     return subscription?.companyId ?? null;
-  }
-
-  /**
-   * Escape hatch propriu al `BillingService` — independent de
-   * `TenantContext.runAsBypass` + `this.prisma.tenantScoped` (care se
-   * bazează pe `AsyncLocalStorage` + `$transaction` array-form; pentru
-   * motive neclare, acel mecanism nu producea efectul așteptat aici).
-   * Folosește tranzacția interactivă a Prisma (`$transaction(async tx =>
-   * ...)`, garantat aceeași conexiune) și setează manual, explicit,
-   * `app.bypass_rls = true` înainte de orice interogare — STRICT pentru
-   * webhook-ul Stripe (fără JWT, fără `companyId` cunoscut dinainte).
-   * Căutările rămase permise sub acest bypass trebuie să rămână "narrow"
-   * (egalitate exactă pe un identificator unic global), niciodată liste.
-   */
-  private async runBypassingRls<T>(
-    fn: (
-      tx: Omit<
-        PrismaClient,
-        '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
-      >,
-    ) => Promise<T>,
-  ): Promise<T> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'true', TRUE)`;
-      return fn(tx);
-    });
   }
 }

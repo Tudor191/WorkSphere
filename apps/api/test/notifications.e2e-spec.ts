@@ -5,10 +5,12 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { createEmployeeAccount, registerCompany } from './helpers/company';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { createEmployeeAccount, registerCompany, uniqueSuffix } from './helpers/company';
 
 describe('Notificări (e2e)', () => {
   let app: INestApplication;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -16,6 +18,7 @@ describe('Notificări (e2e)', () => {
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    prisma = app.get(PrismaService);
   });
 
   afterAll(async () => {
@@ -164,5 +167,76 @@ describe('Notificări (e2e)', () => {
       .patch(`/api/notifications/${notificationId}/read`)
       .set('Authorization', `Bearer ${employee.accessToken}`)
       .expect(404);
+  });
+
+  it('înregistrarea unui device token nou funcționează, iar re-înregistrarea aceluiași token de către același user (update) nu eșuează', async () => {
+    const { accessToken } = await registerCompany(app, 'DeviceNew');
+    const fcmToken = `fcm-${uniqueSuffix()}`;
+
+    await request(app.getHttpServer())
+      .post('/api/notifications/device-tokens')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fcmToken, platform: 'web' })
+      .expect(204);
+
+    // Re-înregistrare (ex: refresh de token FCM) — nu trebuie să eșueze.
+    await request(app.getHttpServer())
+      .post('/api/notifications/device-tokens')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fcmToken, platform: 'web' })
+      .expect(204);
+  });
+
+  it('un fcmToken se poate realoca legitim între companii diferite (același browser folosit succesiv) — vezi ISSUES.md', async () => {
+    const companyA = await registerCompany(app, 'DeviceA');
+    const companyB = await registerCompany(app, 'DeviceB');
+    const fcmToken = `fcm-${uniqueSuffix()}`;
+
+    await request(app.getHttpServer())
+      .post('/api/notifications/device-tokens')
+      .set('Authorization', `Bearer ${companyA.accessToken}`)
+      .send({ fcmToken, platform: 'web' })
+      .expect(204);
+
+    // Compania B revendică același token (ex: cineva a folosit același
+    // calculator/browser pentru două companii diferite) — nu trebuie să
+    // dea eroare de RLS, ca înainte de fix.
+    await request(app.getHttpServer())
+      .post('/api/notifications/device-tokens')
+      .set('Authorization', `Bearer ${companyB.accessToken}`)
+      .send({ fcmToken, platform: 'web' })
+      .expect(204);
+
+    // Tokenul chiar a trecut la userul din compania B, nu a rămas la A.
+    const row = await prisma.runBypassingRls((tx) => tx.deviceToken.findUnique({ where: { fcmToken } }));
+    expect(row?.userId).toBe(companyB.userId);
+  });
+
+  it('dezînregistrarea șterge doar propriul token, nu poate afecta tokenul altui user', async () => {
+    const admin = await registerCompany(app, 'DeviceUnreg');
+    const employee = await createEmployeeAccount(app, admin.accessToken);
+    const fcmToken = `fcm-${uniqueSuffix()}`;
+
+    await request(app.getHttpServer())
+      .post('/api/notifications/device-tokens')
+      .set('Authorization', `Bearer ${employee.accessToken}`)
+      .send({ fcmToken, platform: 'web' })
+      .expect(204);
+
+    // Adminul încearcă să dezînregistreze tokenul angajatului — nu are efect.
+    await request(app.getHttpServer())
+      .delete(`/api/notifications/device-tokens/${fcmToken}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(204);
+    const stillThere = await prisma.runBypassingRls((tx) => tx.deviceToken.findUnique({ where: { fcmToken } }));
+    expect(stillThere).not.toBeNull();
+
+    // Angajatul își dezînregistrează propriul token — funcționează.
+    await request(app.getHttpServer())
+      .delete(`/api/notifications/device-tokens/${fcmToken}`)
+      .set('Authorization', `Bearer ${employee.accessToken}`)
+      .expect(204);
+    const gone = await prisma.runBypassingRls((tx) => tx.deviceToken.findUnique({ where: { fcmToken } }));
+    expect(gone).toBeNull();
   });
 });

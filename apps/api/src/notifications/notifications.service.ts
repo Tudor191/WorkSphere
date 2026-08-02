@@ -45,11 +45,26 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * `fcmToken` e unic GLOBAL (per browser/dispozitiv), nu per companie —
+   * se poate realoca legitim între companii diferite (același calculator
+   * folosit succesiv pentru conturi din companii diferite, ex. cineva
+   * testează/schimbă compania pe același browser). Un `upsert` obișnuit
+   * (`tenantScoped`) eșuează în acest caz: RLS blochează corect UPDATE-ul
+   * peste rândul existent, pentru că acela aparține unei alte companii și
+   * nu poate fi "văzut" din contextul companiei curente — Postgres
+   * respinge cu "new row violates row-level security policy" (confirmat
+   * cu teste reale, nu doar teoretic). Soluția: ștergem explicit orice
+   * rând vechi cu acest `fcmToken` (indiferent de companie — bypass
+   * justificat, narrow, pe un identificator unic global) și creăm unul
+   * nou, normal tenant-scoped.
+   */
   async registerDeviceToken(userId: string, dto: RegisterDeviceTokenDto) {
-    await this.prisma.tenantScoped.deviceToken.upsert({
-      where: { fcmToken: dto.fcmToken },
-      create: { userId, fcmToken: dto.fcmToken, platform: dto.platform },
-      update: { userId, platform: dto.platform },
+    await this.prisma.runBypassingRls(async (tx) => {
+      await tx.deviceToken.deleteMany({ where: { fcmToken: dto.fcmToken } });
+      await tx.deviceToken.create({
+        data: { userId, fcmToken: dto.fcmToken, platform: dto.platform },
+      });
     });
   }
 

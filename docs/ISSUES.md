@@ -843,6 +843,54 @@ efectiv nouă, reproducând întâi eșecul, apoi confirmând fix-ul) — `39a5b
 
 ---
 
+## 32. Înregistrarea unui device token de push pica cu 500 dacă browserul fusese folosit anterior pentru o altă companie
+
+**Context:** găsit de user testând live fluxul de login prin Google —
+înregistrarea prin Google a mers, dar imediat după ajungerea pe
+dashboard, `POST /notifications/device-tokens` (înregistrarea automată a
+token-ului FCM pentru push) pica cu 500: `PrismaClientUnknownRequestError`
+→ Postgres `42501: new row violates row-level security policy (USING
+expression) for table "device_tokens"`.
+
+**Investigație:** o primă reproducere simplă (înregistrare nouă + imediat
+`POST /notifications/device-tokens`, cu un `fcmToken` nou) a trecut fără
+eroare — deci nu era pur și simplu "orice înregistrare nouă + device
+token pică". A doua reproducere, țintită, a izolat exact condiția: **doar
+când același `fcmToken` era deja înregistrat pentru o ALTĂ companie**.
+`fcmToken` e unic GLOBAL (legat de browser/dispozitiv, nu de companie) —
+exact ce se întâmplă când același calculator/browser e folosit succesiv
+pentru conturi din companii diferite (cum a testat userul: mai multe
+înregistrări de test pe același browser, de-a lungul sesiunilor
+anterioare).
+
+`registerDeviceToken` folosea `tenantScoped.deviceToken.upsert(...)`.
+Politica RLS pentru `device_tokens` (tabel copil, izolat prin subquery pe
+`userId` → `users."companyId"`) nu are o gaură — dimpotrivă, blochează
+*corect* actualizarea in-place a unui rând care aparține altei companii,
+pentru că acel rând nu poate fi "văzut" din contextul companiei curente.
+Efectul practic: branch-ul `update` al upsert-ului (declanșat de
+`ON CONFLICT` pe `fcmToken`) era respins de Postgres.
+
+**Soluție:** `registerDeviceToken` nu mai folosește `upsert` — șterge
+explicit orice rând vechi cu acel `fcmToken` (indiferent de companie —
+bypass justificat, narrow, pe un identificator unic global, prin noul
+`PrismaService.runBypassingRls`) și creează un rând nou, normal
+tenant-scoped. Rezultat: token-ul se realocă legitim către noua
+companie/user, exact comportamentul dorit.
+
+Cu ocazia asta, `runBypassingRls` (existent doar ca metodă privată în
+`BillingService`, pentru webhook-ul Stripe) a fost mutat pe
+`PrismaService`, ca escape hatch comun — al doilea caz real în care a
+fost nevoie de el confirmă că nu e un one-off, ci un tipar recurent
+(identificator unic global, operație care traversează deliberat granița
+de tenant).
+
+**Status:** ✅ Rezolvat (reprodus întâi cu teste țintite — token nou vs.
+token deja aparținând altei companii — apoi confirmat fix-ul cu aceleași
+teste, păstrate ca acoperire permanentă în `notifications.e2e-spec.ts`)
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -897,3 +945,12 @@ efectiv nouă, reproducând întâi eșecul, apoi confirmând fix-ul) — `39a5b
     aștepți (un pic prea convenabil), merită un control explicit — ex.
     verifică efectiv CE bază de date/stare a fost atinsă (`SELECT
     count(*)`), nu doar că testul a ieșit verde.
+11. **Un identificator unic GLOBAL (nu per-companie) care se poate realoca
+    legitim între tenanți** (`stripeCustomerId`/`stripeSubscriptionId` la
+    #18, `fcmToken` la #32) **nu trebuie scris cu un `upsert` tenant-scoped
+    obișnuit** — RLS blochează corect (nu e o gaură) actualizarea in-place
+    a unui rând care aparține altui tenant, pentru că acela nu poate fi
+    "văzut" din contextul curent. Modelul corect: șterge explicit rândul
+    vechi (via `PrismaService.runBypassingRls`, bypass narrow și justificat
+    pe acel identificator unic) și creează unul nou, tenant-scoped normal —
+    nu încerca să "repari" un update in-place peste granița de tenant.

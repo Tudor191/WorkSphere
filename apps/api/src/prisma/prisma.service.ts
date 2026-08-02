@@ -81,6 +81,42 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   /**
+   * Escape hatch pentru operații care traversează DELIBERAT granița de
+   * tenant, pe un identificator unic GLOBAL (nu per-companie) — ex.
+   * webhook Stripe (fără JWT, deci fără `companyId` cunoscut — vezi
+   * `BillingService`), sau un `fcmToken` de device push care se poate
+   * realoca legitim între companii diferite (același browser/dispozitiv
+   * folosit succesiv pentru conturi din companii diferite — vezi
+   * `NotificationsService.registerDeviceToken`, unde RLS blochează corect
+   * un UPDATE in-place peste un rând al altei companii, pentru că nu-l
+   * poate "vedea"). Interogările din `fn` trebuie să rămână "narrow"
+   * (egalitate exactă pe un identificator unic global), niciodată liste
+   * filtrate doar parțial — altfel devine o gaură de izolare reală.
+   *
+   * Folosește tranzacția interactivă a Prisma (`$transaction(async tx =>
+   * ...)`, garantat aceeași conexiune), NU `this.tenantScoped` +
+   * `TenantContext.runAsBypass` — acela se bazează pe `$transaction`
+   * "array-form" (`$transaction([setConfig, query])`), care în practică nu
+   * a produs mereu efectul așteptat pentru operații în afara fluxului de
+   * auth (motivul exact rămâne neclar; forma interactivă de mai jos s-a
+   * dovedit fiabilă în ambele cazuri găsite până acum — webhook Stripe și
+   * device tokens).
+   */
+  async runBypassingRls<T>(
+    fn: (
+      tx: Omit<
+        PrismaClient,
+        '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+      >,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'true', TRUE)`;
+      return fn(tx);
+    });
+  }
+
+  /**
    * Rulează un set de operații într-o singură tranzacție, cu contextul de
    * tenant setat o singură dată la început. Folosește asta pentru orice
    * mutație multi-pas care trebuie să fie atomică (ex: aprobare concediu).
