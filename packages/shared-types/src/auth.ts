@@ -25,6 +25,21 @@ export const completeGoogleRegistrationSchema = z.object({
 });
 export type CompleteGoogleRegistrationInput = z.infer<typeof completeGoogleRegistrationSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Email invalid'),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z
+    .string()
+    .min(10, 'Minim 10 caractere')
+    .max(72)
+    .regex(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Trebuie literă mică, literă mare și cifră'),
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export interface AuthUser {
   id: string;
   email: string;

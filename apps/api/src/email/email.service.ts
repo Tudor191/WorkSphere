@@ -20,6 +20,25 @@ export function buildWelcomeEmailHtml(input: WelcomeEmailInput): string {
   `.trim();
 }
 
+export interface PasswordResetEmailInput {
+  to: string;
+  firstName: string;
+  resetUrl: string;
+}
+
+/** Funcție pură — separată ca să poată fi testată fără rețea/cont Resend. */
+export function buildPasswordResetEmailHtml(input: PasswordResetEmailInput): string {
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h1 style="font-size: 20px;">Resetare parolă</h1>
+      <p>Salut, ${input.firstName}. Am primit o cerere de resetare a parolei contului tău WorkSphere.</p>
+      <p><a href="${input.resetUrl}" style="color: #4f46e5;">Alege o parolă nouă</a></p>
+      <p>Linkul e valabil o oră. Dacă nu ai cerut tu resetarea, poți ignora acest email — parola ta rămâne neschimbată.</p>
+      <p>Echipa WorkSphere</p>
+    </div>
+  `.trim();
+}
+
 /**
  * Trimite email-uri tranzacționale prin Resend. Fără `RESEND_API_KEY`
  * configurat, `sendWelcomeEmail` devine un no-op (loghează și întoarce
@@ -54,6 +73,22 @@ export class EmailService {
     } catch (error) {
       this.logger.warn(
         `Trimitere email de bun venit eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  async sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.emails.send({
+        from: this.fromAddress,
+        to: input.to,
+        subject: 'Resetează-ți parola WorkSphere',
+        html: buildPasswordResetEmailHtml(input),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Trimitere email de resetare a parolei eșuată către ${input.to}: ${error instanceof Error ? error.message : error}`,
       );
     }
   }

@@ -224,6 +224,7 @@ model User {
 
   employee          Employee?
   refreshTokens      RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   leaveRequestsApproved LeaveRequest[]      @relation("LeaveApprover")
   auditLogs          AuditLog[]
   notifications      Notification[]
@@ -265,6 +266,24 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+/// Token de resetare a parolei ("Ai uitat parola?") — aceeași formă ca
+/// `RefreshToken` (tabel copil fără `companyId` propriu, izolat prin
+/// subquery pe `userId` → `users.companyId`, vezi migrația RLS). Se caută
+/// mereu sub `TenantContext.runAsBypass` (nu există context de tenant
+/// înainte de autentificare), la fel ca restul fluxului de auth.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 /// [TENANT] Rol per companie. Rolurile de sistem (isSystem=true) sunt seed-uite

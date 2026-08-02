@@ -23,6 +23,8 @@ import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
 import { GoogleSignupPendingPayload, JwtAccessPayload } from './types/jwt-payload.type';
 import { GoogleProfile } from './strategies/google.strategy';
@@ -30,6 +32,8 @@ import { GoogleProfile } from './strategies/google.strategy';
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_BYTES = 48;
 const GOOGLE_SIGNUP_TOKEN_TTL = '10m';
+const PASSWORD_RESET_TOKEN_BYTES = 32;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 oră
 
 interface IssuedTokens {
   accessToken: string;
@@ -106,6 +110,21 @@ export class AuthService {
 
   async completeGoogleRegistration(dto: CompleteGoogleRegistrationDto): Promise<AuthResult> {
     return TenantContext.runAsBypass(() => this.doCompleteGoogleRegistration(dto));
+  }
+
+  /**
+   * Întoarce `{ resetUrl }` (null dacă emailul nu are cont) — folosit intern
+   * de teste, ca să poată verifica ciclul complet de resetare fără un cont
+   * Resend real. Controller-ul HTTP ignoră deliberat valoarea întoarsă:
+   * răspunsul către clientul real rămâne 204 necondiționat, indiferent de
+   * rezultat (vezi comentariul de pe `doForgotPassword`).
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ resetUrl: string } | null> {
+    return TenantContext.runAsBypass(() => this.doForgotPassword(dto));
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    return TenantContext.runAsBypass(() => this.doResetPassword(dto));
   }
 
   async refresh(rawToken: string): Promise<IssuedTokens> {
@@ -517,6 +536,71 @@ export class AuthService {
     return this.jwt.signAsync(payload, {
       secret: this.googleSignupSecret,
       expiresIn: GOOGLE_SIGNUP_TOKEN_TTL,
+    });
+  }
+
+  /**
+   * Răspunsul e IDENTIC indiferent dacă emailul are sau nu un cont — altfel
+   * endpoint-ul ar deveni un oracol pentru "ce emailuri sunt înregistrate
+   * pe WorkSphere" (enumerare de conturi). Dacă există un cont, se
+   * generează un token cu durată scurtă și se trimite pe email; dacă nu,
+   * pur și simplu nu se întâmplă nimic vizibil din exterior.
+   */
+  private async doForgotPassword(dto: ForgotPasswordDto): Promise<{ resetUrl: string } | null> {
+    const user = await this.prisma.tenantScoped.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user) return null;
+
+    const rawToken = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString('hex');
+    await this.prisma.tenantScoped.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: this.hashToken(rawToken),
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const frontendUrl = this.config.get<string>('app.frontendUrl');
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+    await this.email.sendPasswordResetEmail({
+      to: user.email,
+      firstName: user.firstName,
+      resetUrl,
+    });
+    return { resetUrl };
+  }
+
+  /**
+   * Setează parola nouă și, ca măsură de securitate, revocă TOATE sesiunile
+   * active (refresh tokens) ale contului — dacă cineva a resetat parola
+   * pentru că vechea parolă era compromisă, orice sesiune deja deschisă cu
+   * acea parolă (ex. pe un dispozitiv furat) trebuie să moară imediat, nu
+   * doar cea curentă.
+   */
+  private async doResetPassword(dto: ResetPasswordDto): Promise<void> {
+    const tokenHash = this.hashToken(dto.token);
+    const stored = await this.prisma.tenantScoped.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+    if (!stored || stored.usedAt || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException(
+        'Linkul de resetare a parolei a expirat sau este invalid. Cere unul nou.',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.prisma.tenantScoped.user.update({
+      where: { id: stored.userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+    await this.prisma.tenantScoped.passwordResetToken.update({
+      where: { id: stored.id },
+      data: { usedAt: new Date() },
+    });
+    await this.prisma.tenantScoped.refreshToken.updateMany({
+      where: { userId: stored.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
   }
 

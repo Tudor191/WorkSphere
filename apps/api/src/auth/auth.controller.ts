@@ -24,6 +24,8 @@ import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { CompleteGoogleRegistrationDto } from './dto/complete-google-registration.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleProfile } from './strategies/google.strategy';
@@ -61,6 +63,25 @@ export class AuthController {
     const { tokens, user } = await this.authService.login(dto);
     this.setRefreshCookie(res, tokens.refreshToken);
     return this.toAuthResponse(tokens.accessToken, user);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary:
+      'Trimite un email de resetare a parolei, dacă emailul are un cont (răspuns identic indiferent de rezultat)',
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    await this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Setează o parolă nouă folosind tokenul primit prin email' })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    await this.authService.resetPassword(dto);
   }
 
   @Public()

@@ -25,8 +25,9 @@
 - Auth: register companie nouă, login, refresh token cu rotație, logout,
   login prin Google (buton funcțional pe frontend) — inclusiv **înregistrare
   de companie nouă direct prin Google** (nu doar login pe conturi deja
-  existente), plus email de bun venit la înregistrare (Resend, opțional —
-  vezi „Ce urmează").
+  existente), „Ai uitat parola?" (email cu link de resetare, valabil 1 oră,
+  revocă toate sesiunile active la reușită), plus email de bun venit la
+  înregistrare — toate prin Resend, opțional (vezi „Ce urmează").
 - RBAC: ghid + decorator `@RequirePermission()`, seed cu rolurile standard.
 - Audit log: interceptor global care înregistrează automat mutațiile.
 - Module CRUD complete: `companies`, `employees`, `departments`, `roles`
@@ -160,7 +161,10 @@
    unde completează doar numele companiei — restul (roluri, plan trial,
    tipuri de concediu) se creează exact ca la înregistrarea clasică. La
    orice înregistrare (clasică sau Google) se trimite un email de bun
-   venit prin Resend. Are nevoie de:
+   venit prin Resend. Aceeași integrare acoperă și „Ai uitat parola?"
+   (`/forgot-password` → `/reset-password?token=...`) — token cu durată de
+   1 oră, cu hash stocat (niciodată tokenul brut), care revocă toate
+   sesiunile active la resetare reușită. Are nevoie de:
    1. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` (Google
       Cloud Console → OAuth consent screen + credențiale OAuth 2.0) —
       fără ele, `/auth/google` eșuează la Google (client invalid), nu la
