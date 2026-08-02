@@ -783,6 +783,26 @@ simulând exact secvența CI) — `10fc093`
 
 ---
 
+## 30. CI nu s-a rulat NICIODATĂ — trigger-ul aștepta un branch `main` care nu există
+
+**Context:** la pregătirea primului Pull Request al acestei sesiuni, am
+verificat dacă CI chiar pornește pe branch-ul de bază real al
+repository-ului.
+
+**Cauză:** `.github/workflows/ci.yml` avea `on: push/pull_request:
+branches: [main]` — dar branch-ul implicit (default) al acestui
+repository e `claude/saas-firme-romania-cqqcmu`, nu `main`. Un `main` nu
+există deloc în repository. Rezultat: workflow-ul de CI nu s-a declanșat
+NICIODATĂ, pe niciun push sau PR, de la crearea lui — inclusiv fix-ul de
+la #29 (RLS ocolit în CI) nu apucase încă să ruleze vreodată real.
+
+**Soluție:** `branches: [main]` înlocuit cu numele real al branch-ului
+implicit, la ambele trigger-uri (`push` și `pull_request`).
+
+**Status:** ✅ Rezolvat (aplicat) — `<pending>`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și

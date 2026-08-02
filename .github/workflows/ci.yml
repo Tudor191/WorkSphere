@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [claude/saas-firme-romania-cqqcmu]
   pull_request:
-    branches: [main]
+    branches: [claude/saas-firme-romania-cqqcmu]
 
 env:
   DATABASE_URL: postgresql://worksphere:worksphere@localhost:5432/worksphere_test?schema=public
