@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [claude/saas-firme-romania-cqqcmu]
+    branches: [claude/saas-firme-romania-cqqcmu, claude/testing-current-code-julrgu]
   pull_request:
     branches: [claude/saas-firme-romania-cqqcmu]
 
