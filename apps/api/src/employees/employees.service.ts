@@ -253,11 +253,8 @@ export class EmployeesService {
       throw new ForbiddenException('Nu te poți demite singur.');
     }
 
-    const founder = await this.prisma.tenantScoped.employee.findFirst({
-      where: { companyId: TenantContext.requireCompanyId() },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (founder?.id === id) {
+    const founder = await this.founderUserId();
+    if (founder === employee.userId) {
       throw new ForbiddenException('Fondatorul companiei nu poate fi demis de alți utilizatori.');
     }
 
@@ -364,17 +361,38 @@ export class EmployeesService {
       );
     }
 
-    const founder = await this.prisma.tenantScoped.employee.findFirst({
-      where: { companyId: TenantContext.requireCompanyId() },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (founder?.id === id) {
+    const founder = await this.founderUserId();
+    if (founder === employee.userId) {
       throw new ForbiddenException('Fondatorul companiei nu poate fi șters.');
     }
 
     await this.prisma.runInTenantTransaction((tx) =>
       wipeUserContentAndDelete(tx, { employeeId: id, userId: employee.userId }),
     );
+  }
+
+  /**
+   * ID-ul userului fondator = cel mai vechi `User` din companie — NU cel
+   * mai vechi `Employee`. Înregistrarea unei companii (clasică sau prin
+   * Google) creează doar contul `User` al Admin-ului, fără o fișă
+   * `Employee` corespunzătoare (vezi `AuthService.createCompanyWithAdmin`)
+   * — primul angajat adăugat ulterior prin acest modul NU e fondatorul,
+   * doar primul angajat introdus manual. Verificarea greșită anterioară
+   * (primul `Employee`) proteja persoana greșită: bloca definitiv
+   * demiterea/ștergerea primului angajat adăugat, în timp ce fondatorul
+   * real (fără fișă `Employee`) nu era deloc protejat de ea. Cu verificarea
+   * corectă, protecția se aplică STRICT dacă fondatorul chiar are o fișă
+   * `Employee` proprie (userId identic) — altfel nu blochează pe nimeni,
+   * ceea ce e corect: dacă fondatorul nu apare ca angajat, niciun angajat
+   * nu e de fapt el.
+   */
+  private async founderUserId(): Promise<string | undefined> {
+    const founder = await this.prisma.tenantScoped.user.findFirst({
+      where: { companyId: TenantContext.requireCompanyId() },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    return founder?.id;
   }
 }
 

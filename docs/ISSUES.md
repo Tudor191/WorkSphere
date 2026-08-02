@@ -977,6 +977,47 @@ trimite două cereri de înregistrare CONCURENTE pentru același token nou
 
 ---
 
+## 35. Protecția de "fondator" verifica greșit primul `Employee` creat, nu userul real care a înregistrat compania
+
+**Context:** găsit de user testând live — a înregistrat o companie nouă
+(prin Google), apoi a adăugat un angajat (devenit `EMP-0001`). Ulterior a
+testat funcția nouă de auto-ștergere a contului propriu pe acel angajat,
+care l-a anonimizat corect ("Utilizator șters", status SUSPENDED — vezi
+funcția de ștergere cont, `AuthService.deleteOwnAccount`), dar apoi nu a
+mai putut să-l șteargă definitiv din UI: „Fondatorul companiei nu poate fi
+șters." — deși acel angajat nu era, de fapt, fondatorul real al afacerii.
+
+**Investigație:** `EmployeesService.remove()`/`hardDelete()` identificau
+"fondatorul" drept primul rând din tabela `Employee`, ordonat după
+`createdAt`. Dar înregistrarea unei companii (clasică sau prin Google,
+`AuthService.createCompanyWithAdmin`) creează DOAR contul `User` al
+Admin-ului — nicio fișă `Employee` corespunzătoare. Rezultat: primul
+angajat adăugat manual prin modulul Angajați (nu Admin-ul/fondatorul real)
+era greșit tratat ca fondator și bloca definitiv orice demitere/ștergere a
+lui — inclusiv, ca în acest caz, ștergerea unui cont deja anonimizat/mort,
+care rămânea blocat etern în listă, fără nicio cale de curățare din UI.
+
+**Soluție:** verificarea de fondator caută acum cel mai vechi `User` din
+companie (nu cel mai vechi `Employee`) și compară cu `userId`-ul
+angajatului țintă, nu cu ID-ul fișei HR. Cum Admin-ul care se înregistrează
+nu are azi nicio fișă `Employee` proprie, protecția nu se mai declanșează
+greșit pentru primul angajat adăugat — dar tot funcționează corect dacă
+fondatorul chiar ajunge să aibă și o fișă de angajat (testat direct,
+simulând acel caz).
+
+Bonus, aceeași sesiune: pagina Angajați ascunde acum implicit conturile
+SUSPENDATE (demise sau auto-șterse) dintr-un comutator "Arată și foștii
+angajați (N)" — altfel un cont anonimizat rămânea vizibil la nesfârșit în
+listă, fără nicio acțiune posibilă asupra lui în afară de ștergerea
+definitivă (acum, cu fix-ul de mai sus, chiar realizabilă).
+
+**Status:** ✅ Rezolvat — teste noi în `employees-departments.e2e-spec.ts`:
+primul angajat adăugat se poate demite/șterge normal acum, iar protecția
+de fondator tot funcționează corect dacă fondatorul chiar are o fișă de
+angajat proprie (simulat direct în test).
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -1064,3 +1105,14 @@ trimite două cereri de înregistrare CONCURENTE pentru același token nou
     atomic la nivel de Postgres, nu două comenzi separate. „Ștergere +
     creare" a fost o soluție corectă doar accidental (a mascat problema de
     atunci), nu modelul de urmat data viitoare pentru aceeași clasă de bug.
+14. **Un concept de business important ("fondatorul companiei") nu
+    trebuie dedus dintr-o euristică indirectă** ("primul rând creat
+    într-un tabel adiacent", #35) **dacă nu există o garanție reală că
+    acel rând chiar corespunde conceptului** — aici, primul `Employee` nu
+    e neapărat fondatorul, pentru că fondatorul poate să nu aibă deloc o
+    fișă `Employee`. Când un concept de business contează pentru o decizie
+    de autorizare (cine nu poate fi șters/demis), verifică la sursă (cel
+    mai vechi `User`, nu cel mai vechi rând dintr-un tabel derivat) sau,
+    și mai robust pe termen lung, reprezintă-l explicit în schemă (ex. un
+    flag `isFounder` sau `Company.foundingUserId`), nu implicit prin
+    ordinea de creare a altui tabel.

@@ -172,23 +172,6 @@ describe('Angajați + Departamente (e2e)', () => {
     const { accessToken } = await registerCompany(app, 'EmpRemove');
     const roleId = await getRoleId(app, accessToken, 'EMPLOYEE');
 
-    // Primul angajat creat devine "fondatorul" companiei (vezi
-    // employees.service.ts) — folosim un al doilea angajat pentru acest test,
-    // ca să nu se lovească de protecția de fondator.
-    await request(app.getHttpServer())
-      .post('/api/employees')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        email: `primul-${uniqueSuffix()}@e2e.ro`,
-        firstName: 'Primul',
-        lastName: 'Angajat',
-        roleId,
-        position: 'Fondator',
-        contractType: 'FULL_TIME',
-        hireDate: '2026-01-01',
-      })
-      .expect(201);
-
     const target = await request(app.getHttpServer())
       .post('/api/employees')
       .set('Authorization', `Bearer ${accessToken}`)
@@ -234,28 +217,64 @@ describe('Angajați + Departamente (e2e)', () => {
       .expect(404);
   });
 
-  it('protejează fondatorul companiei (primul angajat creat) de demitere de către alți utilizatori', async () => {
-    const { accessToken } = await registerCompany(app, 'Founder');
-    const roleId = await getRoleId(app, accessToken, 'EMPLOYEE');
-
-    const founder = await request(app.getHttpServer())
-      .post('/api/employees')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        email: `fondator-${uniqueSuffix()}@e2e.ro`,
-        firstName: 'Fon',
-        lastName: 'Dator',
-        roleId,
-        position: 'Fondator',
-        contractType: 'FULL_TIME',
-        hireDate: '2026-01-01',
-      })
-      .expect(201);
+  it('primul angajat ADĂUGAT (nu fondatorul real) poate fi demis normal — vezi ISSUES.md', async () => {
+    // Regresie: verificarea de "fondator" se uita greșit la primul
+    // `Employee` creat, nu la userul real al companiei (Admin-ul care s-a
+    // înregistrat nu are nicio fișă `Employee` proprie) — bloca definitiv
+    // demiterea/ștergerea primului angajat adăugat, ca și cum acela ar fi
+    // fondatorul. Fix-ul verifică acum userul cel mai vechi din companie.
+    const { accessToken } = await registerCompany(app, 'NotFounder');
+    const firstEmployee = await createEmployeeAccount(app, accessToken);
 
     await request(app.getHttpServer())
-      .delete(`/api/employees/${founder.body.employee.id}`)
+      .delete(`/api/employees/${firstEmployee.employeeId}`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+    await request(app.getHttpServer())
+      .delete(`/api/employees/${firstEmployee.employeeId}/permanent`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+  });
+
+  it('protejează fondatorul REAL (userul care a înregistrat compania) dacă acesta are și o fișă de angajat', async () => {
+    const admin = await registerCompany(app, 'RealFounder');
+    const me = await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const companyId = me.body.companyId as string;
+
+    // Astăzi niciun flux din UI nu creează o fișă `Employee` pentru Admin-ul
+    // care s-a înregistrat — simulăm direct în DB scenariul în care
+    // fondatorul chiar are și o fișă de angajat proprie, ca să verificăm că
+    // protecția tot funcționează corect în acel caz.
+    const founderEmployee = await prisma.runBypassingRls((tx) =>
+      tx.employee.create({
+        data: {
+          companyId,
+          userId: admin.userId,
+          employeeCode: 'EMP-0001',
+          position: 'CEO',
+          hireDate: new Date('2026-01-01'),
+        },
+      }),
+    );
+
+    // Un Manager (are permisiunea `employees:delete`) încearcă să-l demită
+    // pe fondator — respins de protecția de fondator, nu de lipsă de
+    // permisiune și nici de auto-demitere (nu e contul lui).
+    const manager = await createEmployeeAccount(app, admin.accessToken, 'MANAGER');
+    await request(app.getHttpServer())
+      .delete(`/api/employees/${founderEmployee.id}`)
+      .set('Authorization', `Bearer ${manager.accessToken}`)
       .expect(403);
+
+    // Alt angajat, care nu e fondatorul, se demite normal.
+    const employee = await createEmployeeAccount(app, admin.accessToken);
+    await request(app.getHttpServer())
+      .delete(`/api/employees/${employee.employeeId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(204);
   });
 
   it('un manager cu permisiunea de demitere nu se poate demite pe el însuși', async () => {
@@ -270,9 +289,8 @@ describe('Angajați + Departamente (e2e)', () => {
 
   it('ștergerea definitivă reușește chiar dacă angajatul a trimis mesaje de chat și a creat task-uri (vezi ISSUES.md)', async () => {
     const { accessToken } = await registerCompany(app, 'HardDelContent');
-    // Primul angajat creat devine "fondatorul" (nu poate fi demis de altcineva) —
-    // folosim un al doilea, cu rol MANAGER (are `tasks:create`), ca țintă a testului.
-    await createEmployeeAccount(app, accessToken);
+    // Rol MANAGER (are `tasks:create`) ca țintă a testului, ca angajatul să
+    // poată chiar crea task-ul de mai jos.
     const target = await createEmployeeAccount(app, accessToken, 'MANAGER');
 
     // Angajatul creează conținut văzut/folosit de restul echipei.

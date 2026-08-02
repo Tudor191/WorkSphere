@@ -73,9 +73,10 @@
 - Autentificare: login, register, onboarding companie, login/înregistrare
   prin Google.
 - Dashboard: sidebar + header + dark/light mode, pagini conectate real la
-  API pentru Angajați, Departamente, Concedii, Pontaj, Overview cu
-  statistici reale din DB, plus Proiecte, Clienți, Lead-uri, Produse și
-  Chat.
+  API pentru Angajați (ascunde implicit foștii angajați/conturile
+  suspendate, cu comutator ca să fie oricând vizibile), Departamente,
+  Concedii, Pontaj, Overview cu statistici reale din DB, plus Proiecte,
+  Clienți, Lead-uri, Produse și Chat.
 - Clopoțel de notificări în header — listă, marcare citit, activare push,
   preferință de chat.
 - `/dashboard/account` — profil propriu, schimbare parolă, plan/abonament

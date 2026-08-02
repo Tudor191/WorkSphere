@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   useCreateEmployee,
   useDeleteEmployee,
@@ -60,6 +61,18 @@ export default function EmployeesPage() {
 
   const sortedRoles = React.useMemo(() => sortByHierarchy(roles), [roles]);
   const roleById = React.useMemo(() => new Map(roles?.map((r) => [r.id, r])), [roles]);
+
+  // Ascunde implicit conturile suspendate (demise sau șterse de ele
+  // însele) — altfel rămân la nesfârșit în listă, chiar și un cont
+  // anonimizat ("Utilizator șters") pe care nu-l mai poți nici demite, nici
+  // face nimic cu el vizual. Datele istorice rămân intacte în DB — doar
+  // ascunse din vederea implicită, cu un comutator ca să fie oricând vizibile.
+  const [showFormer, setShowFormer] = React.useState(false);
+  const visibleEmployees = React.useMemo(
+    () => employees?.filter((e) => showFormer || e.user.status !== 'SUSPENDED'),
+    [employees, showFormer],
+  );
+  const suspendedCount = employees?.filter((e) => e.user.status === 'SUSPENDED').length ?? 0;
 
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -165,7 +178,15 @@ export default function EmployeesPage() {
           <p className="text-sm text-muted-foreground">Gestionează echipa companiei tale.</p>
         </div>
 
-        <Dialog
+        <div className="flex items-center gap-4">
+          {suspendedCount > 0 && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Switch checked={showFormer} onCheckedChange={setShowFormer} />
+              Arată și foștii angajați ({suspendedCount})
+            </label>
+          )}
+
+          <Dialog
           open={open}
           onOpenChange={(v) => {
             setOpen(v);
@@ -265,7 +286,8 @@ export default function EmployeesPage() {
               </form>
             )}
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <Card className="px-6">
@@ -321,7 +343,15 @@ export default function EmployeesPage() {
                   </td>
                 </tr>
               )}
-              {employees?.map((emp) => (
+              {!isLoading && (employees?.length ?? 0) > 0 && visibleEmployees?.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                    Toți angajații sunt foști angajați (conturi suspendate) — activează comutatorul de
+                    mai sus ca să-i vezi.
+                  </td>
+                </tr>
+              )}
+              {visibleEmployees?.map((emp) => (
                 <tr key={emp.id} className="hover:bg-accent/40">
                   <td className="px-6 py-3 font-medium">
                     {emp.user.firstName} {emp.user.lastName}

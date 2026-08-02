@@ -45,15 +45,8 @@ describe('Ștergere automată/accelerată a conturilor demise (e2e)', () => {
     );
   }
 
-  /**
-   * Primul angajat creat într-o companie devine "fondatorul" (vezi
-   * `EmployeesService.remove`) și nu poate fi demis de altcineva — creăm
-   * mereu un angajat-fondator de umplutură întâi, ca angajatul real de test
-   * să nu se lovească de acea protecție.
-   */
   async function setupCompanyWithTarget(label: string) {
     const admin = await registerCompany(app, label);
-    await createEmployeeAccount(app, admin.accessToken);
     const employee = await createEmployeeAccount(app, admin.accessToken);
     return { admin, employee };
   }
