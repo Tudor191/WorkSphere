@@ -1,4 +1,13 @@
-import { BadRequestException, Controller, Headers, HttpCode, HttpStatus, Post, Body, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Body,
+  Req,
+} from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -36,9 +45,14 @@ export class BillingController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
-  async webhook(@Req() req: RawBodyRequest<Request>, @Headers('stripe-signature') signature?: string) {
+  async webhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('stripe-signature') signature?: string,
+  ) {
     if (!req.rawBody || !signature) {
-      throw new BadRequestException('Cerere webhook Stripe invalidă — lipsește body-ul sau semnătura.');
+      throw new BadRequestException(
+        'Cerere webhook Stripe invalidă — lipsește body-ul sau semnătura.',
+      );
     }
     const event = this.billingService.constructEvent(req.rawBody, signature);
     await this.billingService.handleEvent(event);

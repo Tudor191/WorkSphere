@@ -58,7 +58,9 @@ export class AiService {
     const reply = completion.choices[0]?.message?.content;
     if (!reply) {
       this.logger.warn('Răspuns OpenAI fără conținut.');
-      throw new ServiceUnavailableException('AI Assistant nu a putut genera un răspuns — încearcă din nou.');
+      throw new ServiceUnavailableException(
+        'AI Assistant nu a putut genera un răspuns — încearcă din nou.',
+      );
     }
     return { reply };
   }

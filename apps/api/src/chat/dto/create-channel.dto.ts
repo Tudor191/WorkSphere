@@ -7,7 +7,10 @@ export class CreateChannelDto {
   @MaxLength(80)
   name!: string;
 
-  @ApiPropertyOptional({ default: false, description: 'Canal privat — vizibil doar membrilor invitați' })
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Canal privat — vizibil doar membrilor invitați',
+  })
   @IsOptional()
   @IsBoolean()
   isPrivate?: boolean;

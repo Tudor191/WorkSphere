@@ -15,7 +15,10 @@ export class CreateStockMovementDto {
   @IsEnum(StockMovementTypeDto)
   type!: StockMovementTypeDto;
 
-  @ApiProperty({ example: 10, description: 'Cantitate (întotdeauna pozitivă — sensul e dat de `type`)' })
+  @ApiProperty({
+    example: 10,
+    description: 'Cantitate (întotdeauna pozitivă — sensul e dat de `type`)',
+  })
   @IsNumber()
   @IsPositive()
   quantity!: number;

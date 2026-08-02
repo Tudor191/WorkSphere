@@ -11,7 +11,9 @@ export class AiController {
 
   @Post('chat')
   @RequirePermission('ai_assistant:use')
-  @ApiOperation({ summary: 'Trimite o conversație către AI Assistant și primește următorul răspuns' })
+  @ApiOperation({
+    summary: 'Trimite o conversație către AI Assistant și primește următorul răspuns',
+  })
   chat(@Body() dto: AiChatDto) {
     return this.aiService.chat(dto.messages);
   }

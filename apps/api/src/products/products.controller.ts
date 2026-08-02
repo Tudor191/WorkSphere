@@ -38,7 +38,9 @@ export class ProductsController {
   @Post()
   @RequirePermission('products:manage')
   @AuditLogEntity('Product')
-  @ApiOperation({ summary: 'Creează produs (stoc inițial 0 — se adaugă printr-o mișcare de intrare)' })
+  @ApiOperation({
+    summary: 'Creează produs (stoc inițial 0 — se adaugă printr-o mișcare de intrare)',
+  })
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
   }

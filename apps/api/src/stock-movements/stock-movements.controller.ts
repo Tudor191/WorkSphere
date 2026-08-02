@@ -22,7 +22,9 @@ export class StockMovementsController {
   @Post()
   @RequirePermission('products:manage')
   @AuditLogEntity('StockMovement')
-  @ApiOperation({ summary: 'Înregistrează o mișcare de stoc (intrare/ieșire) și actualizează stocul curent' })
+  @ApiOperation({
+    summary: 'Înregistrează o mișcare de stoc (intrare/ieșire) și actualizează stocul curent',
+  })
   create(@Body() dto: CreateStockMovementDto, @CurrentUser() user: AuthenticatedUser) {
     return this.stockMovementsService.create(dto, user.userId);
   }

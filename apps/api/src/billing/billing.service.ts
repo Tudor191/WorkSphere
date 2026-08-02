@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaClient, SubscriptionStatus } from '@worksphere/database';
@@ -176,7 +181,9 @@ export class BillingService {
   private async syncSubscription(stripeSubscription: Stripe.Subscription) {
     const companyId = await this.resolveCompanyId(stripeSubscription);
     if (!companyId) {
-      this.logger.warn(`Nu am găsit nicio companie pentru subscription Stripe ${stripeSubscription.id}.`);
+      this.logger.warn(
+        `Nu am găsit nicio companie pentru subscription Stripe ${stripeSubscription.id}.`,
+      );
       return;
     }
 
@@ -208,17 +215,19 @@ export class BillingService {
     // de o reușită reală, în loc să lăsăm un webhook Stripe să pice cu 500
     // pe o eroare opacă.
     const count = await this.runBypassingRls((tx) =>
-      tx.subscription.updateMany({
-        where: { companyId },
-        data: {
-          stripeSubscriptionId: stripeSubscription.id,
-          status: STRIPE_STATUS_MAP[stripeSubscription.status] ?? 'INCOMPLETE',
-          ...(plan ? { planId: plan.id } : {}),
-          currentPeriodStart: toSafeDate(periodStartUnix),
-          currentPeriodEnd: toSafeDate(periodEndUnix),
-          cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
-        },
-      }).then((r) => r.count),
+      tx.subscription
+        .updateMany({
+          where: { companyId },
+          data: {
+            stripeSubscriptionId: stripeSubscription.id,
+            status: STRIPE_STATUS_MAP[stripeSubscription.status] ?? 'INCOMPLETE',
+            ...(plan ? { planId: plan.id } : {}),
+            currentPeriodStart: toSafeDate(periodStartUnix),
+            currentPeriodEnd: toSafeDate(periodEndUnix),
+            cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+          },
+        })
+        .then((r) => r.count),
     );
     if (count === 0) {
       this.logger.warn(
@@ -229,7 +238,8 @@ export class BillingService {
 
   private async onInvoiceEvent(invoice: Stripe.Invoice) {
     if (!invoice.customer) return;
-    const stripeCustomerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id;
+    const stripeCustomerId =
+      typeof invoice.customer === 'string' ? invoice.customer : invoice.customer.id;
 
     await this.runBypassingRls(async (tx) => {
       const subscription = await tx.subscription.findFirst({ where: { stripeCustomerId } });
@@ -285,7 +295,10 @@ export class BillingService {
    */
   private async runBypassingRls<T>(
     fn: (
-      tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
+      tx: Omit<
+        PrismaClient,
+        '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+      >,
     ) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {

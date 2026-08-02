@@ -21,7 +21,11 @@ export class CreateProductDto {
   @Min(0)
   unitPriceCents!: number;
 
-  @ApiPropertyOptional({ default: 'RON' }) @IsOptional() @IsString() @MaxLength(3) currency?: string;
+  @ApiPropertyOptional({ default: 'RON' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  currency?: string;
   @ApiPropertyOptional({ default: 'buc' }) @IsOptional() @IsString() @MaxLength(20) unit?: string;
 
   @ApiPropertyOptional({ description: 'Prag sub care se afișează alertă de stoc scăzut' })
