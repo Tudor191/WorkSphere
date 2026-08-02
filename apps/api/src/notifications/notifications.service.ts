@@ -50,22 +50,30 @@ export class NotificationsService {
    * se poate realoca legitim între companii diferite (același calculator
    * folosit succesiv pentru conturi din companii diferite, ex. cineva
    * testează/schimbă compania pe același browser). Un `upsert` obișnuit
-   * (`tenantScoped`) eșuează în acest caz: RLS blochează corect UPDATE-ul
+   * pe `tenantScoped` eșuează în acest caz: RLS blochează corect UPDATE-ul
    * peste rândul existent, pentru că acela aparține unei alte companii și
    * nu poate fi "văzut" din contextul companiei curente — Postgres
-   * respinge cu "new row violates row-level security policy" (confirmat
-   * cu teste reale, nu doar teoretic). Soluția: ștergem explicit orice
-   * rând vechi cu acest `fcmToken` (indiferent de companie — bypass
-   * justificat, narrow, pe un identificator unic global) și creăm unul
-   * nou, normal tenant-scoped.
+   * respinge cu "new row violates row-level security policy" (confirmat cu
+   * teste reale, nu doar teoretic).
+   *
+   * Soluție: `upsert` pe conflict-ul unic `fcmToken`, dar rulat sub
+   * `PrismaService.runBypassingRls` — un singur `INSERT ... ON CONFLICT DO
+   * UPDATE` atomic, care rezolvă și cazul cross-tenant (RLS e bypass-uit
+   * pentru toată tranzacția). Varianta anterioară (șterge explicit + creează
+   * separat, două comenzi) avea o fereastră reală de race condition: două
+   * înregistrări aproape simultane ale ACELUIAȘI token (ex. dublarea
+   * efectelor React în StrictMode la mount) puteau ambele trece de `delete`
+   * (0 rânduri de șters) și apoi ciocni pe `create`, cu 500 (constrângere de
+   * unicitate) — un `upsert` atomic elimină fereastra complet.
    */
   async registerDeviceToken(userId: string, dto: RegisterDeviceTokenDto) {
-    await this.prisma.runBypassingRls(async (tx) => {
-      await tx.deviceToken.deleteMany({ where: { fcmToken: dto.fcmToken } });
-      await tx.deviceToken.create({
-        data: { userId, fcmToken: dto.fcmToken, platform: dto.platform },
-      });
-    });
+    await this.prisma.runBypassingRls((tx) =>
+      tx.deviceToken.upsert({
+        where: { fcmToken: dto.fcmToken },
+        create: { userId, fcmToken: dto.fcmToken, platform: dto.platform },
+        update: { userId, platform: dto.platform },
+      }),
+    );
   }
 
   async unregisterDeviceToken(userId: string, fcmToken: string) {

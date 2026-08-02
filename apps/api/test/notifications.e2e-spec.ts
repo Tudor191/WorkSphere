@@ -212,6 +212,31 @@ describe('Notificări (e2e)', () => {
     expect(row?.userId).toBe(companyB.userId);
   });
 
+  it('două înregistrări SIMULTANE ale aceluiași token nou (ex. dublarea efectelor React) nu se ciocnesc cu 500', async () => {
+    const { accessToken } = await registerCompany(app, 'DeviceRace');
+    const fcmToken = `fcm-${uniqueSuffix()}`;
+
+    // Simulează exact race condition-ul raportat: două cereri concurente
+    // pentru un token care nu există încă (nu doar secvențial, ca la testul
+    // de mai sus) — înainte de fix (`delete` + `create` separate, nu
+    // atomice), a doua cerere putea ciocni pe constrângerea de unicitate.
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/api/notifications/device-tokens')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ fcmToken, platform: 'web' }),
+      request(app.getHttpServer())
+        .post('/api/notifications/device-tokens')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ fcmToken, platform: 'web' }),
+    ]);
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+
+    const row = await prisma.runBypassingRls((tx) => tx.deviceToken.findUnique({ where: { fcmToken } }));
+    expect(row).not.toBeNull();
+  });
+
   it('dezînregistrarea șterge doar propriul token, nu poate afecta tokenul altui user', async () => {
     const admin = await registerCompany(app, 'DeviceUnreg');
     const employee = await createEmployeeAccount(app, admin.accessToken);

@@ -942,6 +942,41 @@ nulificată.
 
 ---
 
+## 34. Înregistrarea unui device token de push pica intermitent cu 500 (constrângere de unicitate) — regresie introdusă chiar de fix-ul #32
+
+**Context:** găsit de user testând live, la autentificare prin Google —
+`POST /notifications/device-tokens` pica ocazional cu
+`PrismaClientKnownRequestError: Unique constraint failed` pe `fcmToken`,
+în `tx.deviceToken.create()`. Cod afectat: exact fix-ul #32 din sesiunea
+anterioară (`registerDeviceToken`, ștergere explicită + creare separată).
+
+**Investigație:** fix-ul #32 a rezolvat corect problema de atunci (RLS
+bloca `UPDATE`-ul unui `upsert` peste un rând al altei companii), dar l-a
+înlocuit cu DOUĂ comenzi separate (`deleteMany` apoi `create`) în loc de
+UNA singură atomică. Asta a deschis o fereastră nouă de race condition:
+dacă aceeași înregistrare de token e declanșată de două ori aproape
+simultan (ex. efectele React rulează de două ori la montare, în
+`StrictMode`, sau două tab-uri) — ambele cereri pot trece de `deleteMany`
+(0 rânduri de șters, tokenul nu exista încă) și apoi ciocni pe `create`:
+prima reușește, a doua lovește constrângerea de unicitate pe `fcmToken`,
+pentru că prima a apucat deja să insereze și să confirme (commit) rândul.
+Verificat și reprodus cu un test dedicat (două cereri concurente,
+`Promise.all`, pe un token care nu există încă).
+
+**Soluție:** înlocuit `deleteMany` + `create` cu un singur
+`tx.deviceToken.upsert(...)`, rulat tot sub `PrismaService.runBypassingRls`
+— un `INSERT ... ON CONFLICT ("fcmToken") DO UPDATE` atomic la nivel de
+Postgres, care rezolvă ȘI cazul original cross-tenant (bypass_rls activ
+pentru toată tranzacția, deci UPDATE-ul peste rândul altei companii nu mai
+e blocat de RLS), ȘI elimină complet fereastra de race condition (nicio
+comandă separată între „verifică" și „scrie").
+
+**Status:** ✅ Rezolvat — test nou în `notifications.e2e-spec.ts` care
+trimite două cereri de înregistrare CONCURENTE pentru același token nou
+(`Promise.all`), ambele trebuie să reușească (204), fără nicio ciocnire.
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
@@ -1020,3 +1055,12 @@ nulificată.
     la Prisma) e suficientă singură, iar nulificarea manuală devine cod
     mort. Verifică direct în DB (nu presupune) înainte de a păstra sau
     elimina un asemenea pas.
+13. **Corecție la #11: „șterge explicit + creează separat" nu era cel mai
+    bun model, doar unul care rezolva problema imediată** (#34) —
+    varianta corectă, cu ambele avantaje (rezolvă cross-tenant SUB RLS
+    normal ȘI rămâne atomică, fără fereastră de race condition), e un
+    singur `upsert` (conflict pe identificatorul unic global) rulat SUB
+    `PrismaService.runBypassingRls` — un `INSERT ... ON CONFLICT DO UPDATE`
+    atomic la nivel de Postgres, nu două comenzi separate. „Ștergere +
+    creare" a fost o soluție corectă doar accidental (a mascat problema de
+    atunci), nu modelul de urmat data viitoare pentru aceeași clasă de bug.
