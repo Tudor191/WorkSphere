@@ -749,6 +749,40 @@ RLS, nu mock) — `62c0403`
 
 ---
 
+## 29. CI rula testele e2e conectat ca superuser Postgres — RLS nu se activa niciodată în CI
+
+**Context:** verificând dacă mai e nevoie de ceva după ce am extins
+suita de teste (#28), am observat că `.github/workflows/ci.yml` folosea
+`DATABASE_URL=postgresql://worksphere:worksphere@...` pentru absolut
+toți pașii, inclusiv testele e2e — `worksphere` fiind exact
+`POSTGRES_USER`, deci superuser-ul creat automat de imaginea oficială
+Postgres la bootstrap.
+
+**Cauză:** superuserii Postgres ocolesc Row Level Security necondiționat,
+indiferent de `FORCE ROW LEVEL SECURITY` de pe tabele. Testele de izolare
+multi-tenant din CI (inclusiv cele noi de la #28) verificau deci STRICT
+filtrarea explicită `companyId` din cod — RLS nu se activa niciodată în
+CI. Dacă un viitor query ar pierde filtrarea explicită companyId ȘI RLS
+ar fi separat stricat/dezactivat din greșeală, CI tot ar arăta verde:
+niciun test nu mai verifica de fapt exact scenariul care a pornit acest
+proiect (#12).
+
+**Soluție:** pas nou în CI care creează rolul `worksphere_app`
+(NOSUPERUSER NOBYPASSRLS), cu aceleași grant-uri ca în
+`docker/postgres/init-app-role.sh` (docker-compose local), rulat după
+migrații (are nevoie ca tabelele să existe deja). Pasul de teste e2e
+folosește acum `DATABASE_URL` cu `worksphere_app`, nu cu superuserul —
+migrațiile rămân pe superuser (au nevoie de privilegii de schema).
+Verificat local, simulând exact secvența CI (bază de date nouă, migrare
+ca superuser, apoi rulare teste ca `worksphere_app`) — toate cele 22 de
+teste tot trec, de data asta prin RLS real, nu doar prin filtrarea din
+aplicație.
+
+**Status:** ✅ Rezolvat (aplicat, verificat local cu Postgres real,
+simulând exact secvența CI) — `10fc093`
+
+---
+
 ## Tipare observate (ca să nu se repete)
 
 1. **RLS nu e suficient singur** — orice tabel tenant-scoped are nevoie și
