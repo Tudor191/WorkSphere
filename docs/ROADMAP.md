@@ -228,8 +228,19 @@
      `stockQuantity` atomic; ștergerea unui produs e blocată cât timp
      mai are stoc).
    - **Chat intern**: ✅ prima felie implementată — canale publice/private
-     cu membri expliciți, mesaje. Livrarea e prin polling (4s), nu
-     WebSocket — real-time propriu-zis rămâne pentru o felie următoare.
+     cu membri expliciți, mesaje. ✅ Livrare în timp real prin WebSocket
+     (`ChatGateway`, namespace `/chat`) — nu mai face polling la 4s;
+     mesajele noi ajung instant tuturor conexiunilor autentificate care s-au
+     alăturat camerei canalului respectiv (`join_channel`), cu aceeași
+     verificare de acces ca pe REST pentru canalele private
+     (`ChatService.assertAccess`). Trimiterea rămâne pe
+     `POST /chat/channels/:id/messages` (validare/permisiuni neschimbate);
+     gateway-ul acoperă strict autentificarea conexiunii live și distribuirea
+     evenimentului (`chat.message.created` → `EventEmitter2` → `new_message`
+     pe canalul Socket.IO), nu persistența. Scalare orizontală (mai multe
+     instanțe API) ar necesita un adapter Redis pentru Socket.IO — nu e
+     implementat, pentru că deploy-ul curent (docker-compose) rulează o
+     singură instanță API.
 
    Cu asta, toate cele patru module din acest punct au o primă felie
    funcțională; ce rămâne pe fiecare e listat mai sus, individual.

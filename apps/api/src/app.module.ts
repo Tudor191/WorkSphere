@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import configuration from './config/configuration';
@@ -33,6 +34,12 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    // Decuplează `ChatService` (persistă mesajul) de `ChatGateway` (îl
+    // livrează prin WebSocket) — fără asta, cele două ar avea o dependență
+    // circulară directă (serviciul are nevoie de gateway ca să emită,
+    // gateway-ul are nevoie de serviciu pentru verificarea de acces la
+    // canal). Vezi `ChatService.createMessage` / `ChatGateway`.
+    EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 120 }],

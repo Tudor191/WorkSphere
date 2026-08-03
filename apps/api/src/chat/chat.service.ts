@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContext } from '../common/tenant/tenant-context';
 import { SAFE_USER_SELECT } from '../common/constants/safe-user-select';
@@ -18,6 +19,7 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /** Canale vizibile userului curent: toate cele publice + cele private din care face parte. */
@@ -70,8 +72,10 @@ export class ChatService {
    * Verificare de acces per-canal — deliberat separată de `@RequirePermission('chat:use')`
    * (care doar confirmă că rolul userului are voie să folosească chatul în general).
    * Un canal privat rămâne izolat de restul companiei chiar dacă cineva îi ghicește ID-ul.
+   * Public (nu doar folosit intern): `ChatGateway` o refolosește la `join_channel`,
+   * ca un canal privat să rămână izolat și pe conexiunea live, nu doar pe REST.
    */
-  private async assertAccess(channelId: string, userId: string) {
+  async assertAccess(channelId: string, userId: string) {
     const channel = await this.prisma.tenantScoped.chatChannel.findFirst({
       where: { id: channelId, companyId: TenantContext.requireCompanyId() },
       include: { members: { where: { userId } } },
@@ -100,6 +104,10 @@ export class ChatService {
       include: { author: { select: SAFE_USER_SELECT } },
     });
     await this.notifyNewMessage(channel, message);
+    // `ChatGateway` ascultă acest eveniment ca să distribuie mesajul instant
+    // tuturor conexiunilor Socket.IO din canal — vezi comentariul de-acolo
+    // pentru motivul decuplării prin EventEmitter2, nu injecție directă.
+    this.eventEmitter.emit('chat.message.created', { channelId, message });
     return message;
   }
 

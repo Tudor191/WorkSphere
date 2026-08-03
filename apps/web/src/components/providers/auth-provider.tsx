@@ -12,6 +12,7 @@ import type {
 } from '@worksphere/shared-types';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { tokenStore } from '@/lib/token-store';
+import { disconnectChatSocket } from '@/lib/chat-socket';
 import { checkAndRecordIdentity, recordIdentityFromToken, clearRecordedIdentity } from '@/lib/session-identity';
 
 interface AuthContextValue {
@@ -145,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionVersionRef.current += 1;
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     tokenStore.set(null);
+    disconnectChatSocket();
     clearRecordedIdentity();
     setUser(null);
     queryClient.clear();
