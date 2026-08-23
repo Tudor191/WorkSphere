@@ -1,5 +1,6 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { SectionHeading } from './section-heading';
+import { Reveal } from './reveal';
 
 const faqs = [
   {
@@ -33,15 +34,19 @@ export function Faq() {
   return (
     <section id="faq" className="py-24 sm:py-32">
       <div className="container max-w-3xl">
-        <SectionHeading eyebrow="Întrebări frecvente" title="Tot ce trebuie să știi" />
-        <Accordion type="single" collapsible className="mt-12 w-full">
-          {faqs.map((faq) => (
-            <AccordionItem key={faq.question} value={faq.question}>
-              <AccordionTrigger>{faq.question}</AccordionTrigger>
-              <AccordionContent>{faq.answer}</AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <Reveal>
+          <SectionHeading eyebrow="Întrebări frecvente" title="Tot ce trebuie să știi" />
+        </Reveal>
+        <Reveal delay={0.1}>
+          <Accordion type="single" collapsible className="mt-12 w-full">
+            {faqs.map((faq) => (
+              <AccordionItem key={faq.question} value={faq.question}>
+                <AccordionTrigger>{faq.question}</AccordionTrigger>
+                <AccordionContent>{faq.answer}</AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </Reveal>
       </div>
     </section>
   );

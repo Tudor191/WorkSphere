@@ -1,8 +1,8 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Clock, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { SectionHeading } from './section-heading';
+import { Reveal } from './reveal';
 
 const benefits = [
   {
@@ -34,28 +34,27 @@ export function Benefits() {
   return (
     <section id="beneficii" className="py-24 sm:py-32">
       <div className="container">
-        <SectionHeading
-          eyebrow="De ce WorkSphere"
-          title="Mai puțin administrativ, mai multă claritate"
-          description="Fiecare funcționalitate e gândită să reducă timpul pierdut cu sarcini repetitive."
-        />
+        <Reveal>
+          <SectionHeading
+            eyebrow="De ce WorkSphere"
+            title="Mai puțin administrativ, mai multă claritate"
+            description="Fiecare funcționalitate e gândită să reducă timpul pierdut cu sarcini repetitive."
+          />
+        </Reveal>
 
         <div className="mt-16 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {benefits.map((benefit, i) => (
-            <motion.div
+            <Reveal
               key={benefit.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-80px' }}
-              transition={{ duration: 0.5, delay: i * 0.08 }}
-              className="rounded-2xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
+              delay={i * 0.08}
+              className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-110">
                 <benefit.icon className="h-5 w-5" />
               </div>
               <h3 className="mt-4 font-semibold">{benefit.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{benefit.description}</p>
-            </motion.div>
+            </Reveal>
           ))}
         </div>
       </div>

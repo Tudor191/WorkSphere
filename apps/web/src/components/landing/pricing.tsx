@@ -2,12 +2,16 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { SectionHeading } from './section-heading';
+import { Reveal } from './reveal';
+import { Magnetic } from './magnetic';
+
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 const plans = [
   {
@@ -43,17 +47,39 @@ const plans = [
   },
 ];
 
+/** Preț care se derulează vertical la comutarea lunar/anual, în loc să sară instant. */
+function PriceTag({ amount, yearly }: { amount: number; yearly: boolean }) {
+  return (
+    <span className="relative inline-grid overflow-hidden align-bottom [line-height:1]">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={`${amount}-${yearly}`}
+          initial={{ y: 16, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -16, opacity: 0 }}
+          transition={{ duration: 0.2, ease: EASE_OUT }}
+          className="col-start-1 row-start-1 text-4xl font-semibold"
+        >
+          {amount}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
 export function Pricing() {
   const [yearly, setYearly] = React.useState(false);
 
   return (
     <section id="preturi" className="py-24 sm:py-32">
       <div className="container">
-        <SectionHeading
-          eyebrow="Prețuri"
-          title="Simplu, transparent, fără costuri ascunse"
-          description="14 zile trial gratuit pe orice plan. Nu ai nevoie de card pentru a începe."
-        />
+        <Reveal>
+          <SectionHeading
+            eyebrow="Prețuri"
+            title="Simplu, transparent, fără costuri ascunse"
+            description="14 zile trial gratuit pe orice plan. Nu ai nevoie de card pentru a începe."
+          />
+        </Reveal>
 
         <div className="mt-10 flex items-center justify-center gap-3">
           <span className={cn('text-sm', !yearly && 'font-medium text-foreground')}>Lunar</span>
@@ -65,21 +91,26 @@ export function Pricing() {
 
         <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {plans.map((plan, i) => (
-            <motion.div
+            <Reveal
               key={plan.name}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-80px' }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
+              delay={i * 0.1}
               className={cn(
-                'relative flex flex-col rounded-2xl border p-8 shadow-sm',
-                plan.highlighted ? 'border-primary bg-card shadow-lg ring-1 ring-primary' : 'border-border bg-card',
+                'relative flex flex-col rounded-2xl border p-8 shadow-sm transition-all duration-200 hover:-translate-y-1',
+                plan.highlighted
+                  ? 'border-primary bg-card shadow-lg ring-1 ring-primary hover:shadow-xl'
+                  : 'border-border bg-card hover:shadow-md',
               )}
             >
               {plan.highlighted && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                <motion.span
+                  initial={{ opacity: 0, y: -6 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.2, duration: 0.4, ease: EASE_OUT }}
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                >
                   Cel mai popular
-                </span>
+                </motion.span>
               )}
               <h3 className="font-semibold">{plan.name}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
@@ -87,9 +118,7 @@ export function Pricing() {
               <div className="mt-6">
                 {plan.priceMonthly ? (
                   <>
-                    <span className="text-4xl font-semibold">
-                      {yearly ? Math.round(plan.priceYearly! / 12) : plan.priceMonthly}
-                    </span>
+                    <PriceTag amount={yearly ? Math.round(plan.priceYearly! / 12) : plan.priceMonthly} yearly={yearly} />
                     <span className="text-muted-foreground"> RON/lună</span>
                     {yearly && (
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -111,12 +140,20 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <Button className="mt-8" variant={plan.highlighted ? 'default' : 'outline'} asChild>
-                <Link href={plan.priceMonthly ? '/register' : '#contact'}>
-                  {plan.priceMonthly ? 'Începe trial-ul gratuit' : 'Contactează-ne'}
-                </Link>
-              </Button>
-            </motion.div>
+              {plan.highlighted ? (
+                <Magnetic strength={0.15}>
+                  <Button className="mt-8" asChild>
+                    <Link href="/register">Începe trial-ul gratuit</Link>
+                  </Button>
+                </Magnetic>
+              ) : (
+                <Button className="mt-8" variant="outline" asChild>
+                  <Link href={plan.priceMonthly ? '/register' : '#contact'}>
+                    {plan.priceMonthly ? 'Începe trial-ul gratuit' : 'Contactează-ne'}
+                  </Link>
+                </Button>
+              )}
+            </Reveal>
           ))}
         </div>
       </div>
